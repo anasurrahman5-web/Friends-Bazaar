@@ -33,8 +33,8 @@ export default function App() {
 
   // Main Owner & Partners State
   const [ownerInfo, setOwnerInfo] = useState({ 
-    name: 'আনিসুর রহমান', 
-    email: 'anasur@friendsbazaar.com', 
+    name: 'Md Anasur Rahman', 
+    email: 'anasurrahman5@gmail.com', 
     phone: '01722023943',
     address: 'আশুগঞ্জ, ব্রাহ্মণবাড়িয়া, বাংলাদেশ',
     description: 'খাঁটি, নিরাপদ ও প্রিমিয়াম কোয়ালিটি পণ্য অর্ডার করুন খুব সহজেই ঘরে বসে।'
