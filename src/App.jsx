@@ -160,7 +160,6 @@ export default function App() {
     return supabase.storage.from('site-assets').getPublicUrl(key).data.publicUrl;
   }
 
-  // Multiple Images Upload Handler (Supports 5-6+ images)
   async function handleMultipleImagesUpload(e) {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -307,7 +306,6 @@ export default function App() {
             </article>)}
           </div>
 
-          {/* Premium Product Details Modal */}
           {selectedProduct && (
             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(15, 23, 42, 0.75)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:3000,padding:20,backdropFilter:'blur(5px)'}}>
               <div style={{background:'#fff',padding:35,borderRadius:24,maxWidth:750,width:'100%',maxHeight:'90vh',overflowY:'auto',position:'relative',boxShadow:'0 25px 50px -12px rgba(0,0,0,0.25)'}}>
@@ -316,7 +314,6 @@ export default function App() {
                 <h2 style={{fontSize:26,color:'#0f172a',marginBottom:5}}>{selectedProduct.name}</h2>
                 <strong style={{fontSize:26,color:'#059669',display:'block',marginBottom:20}}>{money(selectedProduct.price)}</strong>
                 
-                {/* Image Gallery (Multiple Images Viewer) */}
                 <div style={{textAlign:'center',marginBottom:20}}>
                   <div style={{background:'#f8fafc',borderRadius:16,padding:10,border:'1px solid #e2e8f0',display:'inline-block',width:'100%'}}>
                     <img src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80'} alt={selectedProduct.name} style={{maxHeight:320,width:'100%',objectFit:'contain',borderRadius:12}}/>
@@ -395,7 +392,6 @@ export default function App() {
               <div style={panel}>আনুমানিক লাভ<h2 style={{color:'#d97706',marginTop:5}}>{money(profit)}</h2></div>
             </div>
             
-            {/* Product Management with Multiple Image Uploader */}
             <div style={panel}>
               <h3>🛍️ নতুন পণ্য যুক্ত করুন বা এডিট করুন (একাধিক ছবি ও ডেসক্রিপশনসহ)</h3>
               <form style={{display:'flex',flexDirection:'column',gap:15,marginTop:15}} onSubmit={saveProduct}>
@@ -477,16 +473,16 @@ export default function App() {
               </form>
               <div style={{marginTop:15}}>
                 {partners.map(pt=><div key={pt.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:10,background:'#f8fafc',borderRadius:8,marginBottom:8}}>
-                  <span><b>{pt.name}</b> — {pt.email} ({pt.role})</span><button onClick={()=>removePartner(pt.id)} style={{background:'#ef4444',color:'#fff',border:0,padding:'4px 10px',borderRadius:6,cursor:'pointer'}}>রিমুভ</button>
+                  <span><b>{pt.name}</b> — {pt.email} ({pt.role})</span><button onClick={()=>removePartner(pt.id)} style={{background:'#ef4444',color:'#fff',border:0,padding:'4px 10px',borderRadius:6,cursor:'pointer'}}>রিমুভ করুন</button>
                 </div>)}
               </div>
             </div>
-          </>}{(/* Admin view end */}
+          </>
+          )}
         </section>}
       </main>
     </div>
 
-    {/* Footer with Address, Contact Us & Marketplace details */}
     <footer style={{background:'#0f172a',color:'#cbd5e1',padding:'50px 20px 30px',marginTop:60,borderTop:'4px solid #38bdf8'}}>
       <div style={{maxWidth:1200,margin:'0 auto',display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))',gap:40}}>
         <div>
