@@ -341,5 +341,5 @@ export default function App() {
         <small>© Friends Bazaar</small>
       </footer>
     </div>
-  );
+  ;
 }
