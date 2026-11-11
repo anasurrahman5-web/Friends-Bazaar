@@ -32,7 +32,7 @@ export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [cart, setCart] = useState([]);
   const [checkout, setCheckout] = useState({ name:'', phone:'', address:'', trxId:'' });
-  const [lastOrderCode, setLastOrderCode] = useState('');
+  const [lastOrder, setLastOrder] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   
@@ -41,7 +41,7 @@ export default function App() {
   const [isZoomed, setIsZoomed] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: '', cost: '', price: '', stock: '', description: '', benefits: '', drawbacks: '', image_url: '', images: [] });
   const [editing, setEditing] = useState(null);
-  const [partner, setPartner] = useState({ name:'', email:'' });
+  const [newPartnerEmail, setNewPartnerEmail] = useState('');
   const [tempSettings, setTempSettings] = useState(DEFAULT_SETTINGS);
 
   const isAdmin = ['admin', 'owner'].includes(adminRole);
@@ -94,8 +94,8 @@ export default function App() {
   useEffect(() => { loadAll(); }, [session]);
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
-  const revenue = orders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-  const profit = orders.reduce((sum, o) => sum + Number(o.profit || 0), 0);
+  const revenue = orders.filter(o => o.status !== 'Cancelled').reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const profit = orders.filter(o => o.status !== 'Cancelled').reduce((sum, o) => sum + Number(o.profit || 0), 0);
 
   async function login(e) {
     e.preventDefault(); setBusy(true);
@@ -136,8 +136,13 @@ export default function App() {
     setBusy(false);
     if (error) { setNotice('অর্ডার সাবমিট হয়নি: ' + error.message); return; }
     
-    const code = data?.order_code || 'অর্ডার সফল';
-    setLastOrderCode(code);
+    // সদ্য তৈরি হওয়া অর্ডারের সম্পূর্ণ তথ্য ফেচ করা
+    const newOrderId = data?.order_id;
+    if (newOrderId) {
+      const fetchedOrder = await supabase.from('orders').select('*, order_items(*, products(*))').eq('id', newOrderId).single();
+      if (!fetchedOrder.error) setLastOrder(fetchedOrder.data);
+    }
+
     setCart([]); setCheckout({name:'',phone:'',address:'',trxId:''});
     await loadAll();
   }
@@ -229,6 +234,106 @@ export default function App() {
   async function updateOrderStatus(orderId, status) {
     const { error } = await supabase.from('orders').update({ status }).eq('id', orderId);
     if (!error) await loadAll();
+  }
+
+  async function addPartner(e) {
+    e.preventDefault();
+    if (!newPartnerEmail.trim()) return;
+    setBusy(true);
+    const { error } = await supabase.from('partners').insert({ name: 'Partner', email: newPartnerEmail.trim() });
+    setBusy(false);
+    if (error) {
+      setNotice('পার্টনার যোগ করা যায়নি: ' + error.message);
+    } else {
+      setNewPartnerEmail('');
+      setNotice('পার্টনার সফলভাবে যুক্ত করা হয়েছে!');
+      await loadAll();
+    }
+  }
+
+  async function deletePartner(id) {
+    if (!confirm('পার্টনারকে তালিকা থেকে সরাতে চান?')) return;
+    await supabase.from('partners').delete().eq('id', id);
+    await loadAll();
+  }
+
+  function downloadInvoice(order) {
+    const printWindow = window.open('', '_blank');
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="bn">
+      <head>
+        <meta charset="UTF-8">
+        <title>Invoice - ${order.order_code}</title>
+        <style>
+          body { font-family: 'Inter', Arial, sans-serif; padding: 30px; color: #1e293b; }
+          .invoice-box { max-width: 800px; margin: auto; padding: 30px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0, 0, 0, 0.15); border-radius: 10px; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 20px; }
+          .table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          .table th, .table td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; font-size: 14px; }
+          .table th { background: #f1f5f9; }
+          .total { text-align: right; margin-top: 20px; font-size: 18px; font-weight: bold; color: #059669; }
+        </style>
+      </head>
+      <body>
+        <div class="invoice-box">
+          <div class="header">
+            <div>
+              <h2 style="margin:0; color:#0f172a;">Friends Bazar</h2>
+              <p style="margin:5px 0 0 0; font-size:13px; color:#64748b;">${settings.owner.address} | ফোন: ${settings.owner.phone}</p>
+            </div>
+            <div style="text-align: right;">
+              <h3 style="margin:0; color:#0284c7;">INVOICE</h3>
+              <p style="margin:5px 0 0 0; font-size:14px;">কোড: <b>${order.order_code}</b></p>
+              <p style="margin:3px 0 0 0; font-size:13px; color:#64748b;">তারিখ: ${new Date(order.created_at).toLocaleDateString()}</p>
+            </div>
+          </div>
+          
+          <div style="margin-bottom: 20px;">
+            <p style="margin:4px 0;"><b>গ্রাহকের নাম:</b> ${order.customer_name}</p>
+            <p style="margin:4px 0;"><b>ফোন নম্বর:</b> ${order.phone}</p>
+            <p style="margin:4px 0;"><b>ঠিকানা:</b> ${order.address}</p>
+            <p style="margin:4px 0;"><b>বিকাশ TrxID:</b> ${order.trx_id}</p>
+            <p style="margin:4px 0;"><b>অর্ডার স্ট্যাটাস:</b> <span style="color:${order.status==='Cancelled'?'#dc2626':'#059669'}">${order.status}</span></p>
+          </div>
+
+          <table class="table">
+            <thead>
+              <tr>
+                <th>পণ্যের নাম</th>
+                <th>পরিমাণ</th>
+                <th>মূল্য</th>
+                <th>মোট</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${order.order_items.map(item => `
+                <tr>
+                  <td>${item.products?.name || 'পণ্য'}</td>
+                  <td>${item.qty} টি</td>
+                  <td>৳ ${Number(item.price).toLocaleString('en-BD')}</td>
+                  <td>৳ ${(item.price * item.qty).toLocaleString('en-BD')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="total">
+            মোট প্রদেয়: ৳ ${Number(order.total).toLocaleString('en-BD')}
+          </div>
+
+          <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+            আমাদের সাথে থাকার জন্য ধন্যবাদ! — Friends Bazar
+          </div>
+        </div>
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
   }
 
   return (
@@ -333,12 +438,13 @@ export default function App() {
           {tab==='cart' && (
             <div style={{maxWidth:800,margin:'0 auto',...panel}}>
               <h2>🛒 শপিং কার্ট ও চেকআউট</h2>
-              {lastOrderCode && (
-                <div style={{background:'#d1fae5',color:'#065f46',padding:15,borderRadius:10,marginBottom:20,border:'1px solid #34d399'}}>
+              {lastOrder ? (
+                <div style={{background:'#d1fae5',color:'#065f46',padding:20,borderRadius:12,marginBottom:20,border:'1px solid #34d399'}}>
                   <h3 style={{margin:'0 0 5px 0'}}>🎉 অর্ডার সফলভাবে গ্রহণ করা হয়েছে!</h3>
-                  <p style={{margin:0}}>আপনার অর্ডার আইডি: <b>{lastOrderCode}</b>। খুব শীঘ্রই আমাদের প্রতিনিধি আপনার সাথে যোগাযোগ করবেন।</p>
+                  <p style={{margin:'0 0 15px 0'}}>অর্ডার আইডি: <b>{lastOrder.order_code}</b></p>
+                  <button style={btn('#0284c7')} onClick={()=>downloadInvoice(lastOrder)}>📥 অর্ডার ইনভয়েস ডাউনলোড/প্রিন্ট করুন</button>
                 </div>
-              )}
+              ) : null}
 
               {!cart.length ? (
                 <div style={{textAlign:'center',padding:'40px 0'}}>
@@ -419,6 +525,23 @@ export default function App() {
                     <div style={{background:'#0284c7',color:'#fff',padding:20,borderRadius:12}}>
                       <p style={{margin:'0 0 5px 0',color:'#bae6fd'}}>আনুমানিক প্রফিট</p>
                       <h3 style={{margin:0,fontSize:26}}>{money(profit)}</h3>
+                    </div>
+                  </div>
+
+                  {/* পার্টনার ম্যানেজমেন্ট */}
+                  <div style={panel}>
+                    <h3>👥 পার্টনার ম্যানেজমেন্ট (অ্যাক্সেস প্রদান)</h3>
+                    <form onSubmit={addPartner} style={{display:'flex',gap:10,marginTop:15}}>
+                      <input style={{...inputStyle, flex:1}} type="email" required placeholder="পার্টনারের ইমেইল অ্যাড্রেস দিন" value={newPartnerEmail} onChange={e=>setNewPartnerEmail(e.target.value)}/>
+                      <button style={btn('#059669')}>পার্টনার যুক্ত করুন</button>
+                    </form>
+                    <div style={{marginTop:15,display:'flex',flexWrap:'wrap',gap:10}}>
+                      {partners.map(pt=>(
+                        <div key={pt.id} style={{background:'#f1f5f9',padding:'8px 15px',borderRadius:8,display:'flex',alignItems:'center',gap:10,border:'1px solid #cbd5e1'}}>
+                          <span>{pt.email}</span>
+                          <button onClick={()=>deletePartner(pt.id)} style={{background:'#dc2626',color:'#fff',border:0,borderRadius:4,padding:'2px 8px',cursor:'pointer'}}>✕</button>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
@@ -507,9 +630,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* অর্ডার লিস্ট */}
+                  {/* অর্ডার লিস্ট ও ইনভয়েস ডাউনলোড */}
                   <div style={panel}>
-                    <h3>📦 কাস্টমার অর্ডারসমূহ</h3>
+                    <h3>📦 কাস্টমার অর্ডারসমূহ ও ইনভয়েস ম্যানেজমেন্ট</h3>
                     <div style={{overflowX:'auto'}}>
                       <table style={{width:'100%',borderCollapse:'collapse',marginTop:10,fontSize:14}}>
                         <thead>
@@ -520,23 +643,27 @@ export default function App() {
                             <th style={{padding:10}}>TrxID</th>
                             <th style={{padding:10}}>মোট টাকা</th>
                             <th style={{padding:10}}>স্ট্যাটাস</th>
+                            <th style={{padding:10}}>ইনভয়েস</th>
                           </tr>
                         </thead>
                         <tbody>
                           {orders.map(o=>(
-                            <tr key={o.id} style={{borderBottom:'1px solid #e2e8f0'}}>
+                            <tr key={o.id} style={{borderBottom:'1px solid #e2e8f0', background: o.status==='Cancelled' ? '#fef2f2' : 'transparent'}}>
                               <td style={{padding:10,fontWeight:700}}>{o.order_code}</td>
                               <td style={{padding:10}}>{o.customer_name}</td>
                               <td style={{padding:10}}>{o.phone}<br/>{o.address}</td>
                               <td style={{padding:10}}>{o.trx_id}</td>
                               <td style={{padding:10,fontWeight:700,color:'#059669'}}>{money(o.total)}</td>
                               <td style={{padding:10}}>
-                                <select value={o.status} onChange={e=>updateOrderStatus(o.id, e.target.value)} style={{padding:6,borderRadius:6}}>
+                                <select value={o.status} onChange={e=>updateOrderStatus(o.id, e.target.value)} style={{padding:6,borderRadius:6,fontWeight:600,color:o.status==='Cancelled'?'#dc2626':'#1e293b'}}>
                                   <option value="Pending">Pending</option>
                                   <option value="Processing">Processing</option>
                                   <option value="Completed">Completed</option>
-                                  <option value="Cancelled">Cancelled</option>
+                                  <option value="Cancelled">Cancelled (বাতিল)</option>
                                 </select>
+                              </td>
+                              <td style={{padding:10}}>
+                                <button onClick={()=>downloadInvoice(o)} style={{padding:'6px 12px',background:'#0284c7',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>📥 প্রিন্ট ইনভয়েস</button>
                               </td>
                             </tr>
                           ))}
