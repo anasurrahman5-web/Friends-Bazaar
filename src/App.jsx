@@ -3,7 +3,7 @@ import { supabase, isConfigured } from './lib/supabase';
 
 const DEFAULT_SETTINGS = {
   owner: {
-    name: 'Md Anasur Rahman',
+    name: 'Md. Anisur Rahman',
     email: 'anasurrahman5@gmail.com',
     phone: '01722023943',
     address: 'আশুগঞ্জ, ব্রাহ্মণবাড়িয়া, বাংলাদেশ',
@@ -11,13 +11,14 @@ const DEFAULT_SETTINGS = {
   },
   payment: { methodName: 'বিকাশ পার্সোনাল', accountNumber: '01722023943' },
   logo: '',
-  banner: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1200&q=80'
+  banner: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1200&q=80',
+  dashboardBg: 'https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=1200&q=80'
 };
 
 const money = n => `৳ ${Number(n || 0).toLocaleString('en-BD')}`;
 const inputStyle = { padding: 12, borderRadius: 10, border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box', fontSize: '15px' };
 const btn = (bg='#0f172a') => ({ background:bg, color:'#fff', border:0, padding:'12px 18px', borderRadius:10, cursor:'pointer', fontWeight:700 });
-const panel = { background:'#fff', padding:25, borderRadius:16, border:'1px solid #e2e8f0', marginBottom:25 };
+const panel = { background:'#fff', padding:25, borderRadius:16, border:'1px solid #e2e8f0', marginBottom:25, boxShadow:'0 4px 6px -1px rgba(0,0,0,0.05)' };
 
 export default function App() {
   const [tab, setTab] = useState('shop');
@@ -31,14 +32,16 @@ export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [cart, setCart] = useState([]);
   const [checkout, setCheckout] = useState({ name:'', phone:'', address:'', trxId:'' });
-  const [success, setSuccess] = useState('');
+  const [lastOrderCode, setLastOrderCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isZoomed, setIsZoomed] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: '', cost: '', price: '', stock: '', description: '', benefits: '', drawbacks: '', image_url: '', images: [] });
   const [editing, setEditing] = useState(null);
+  const [partner, setPartner] = useState({ name:'', email:'' });
   const [tempSettings, setTempSettings] = useState(DEFAULT_SETTINGS);
 
   const isAdmin = ['admin', 'owner'].includes(adminRole);
@@ -58,17 +61,19 @@ export default function App() {
     ]);
     if (p.error) setNotice(p.error.message);
     else setProducts(p.data || []);
+    
     const nextSettings = s.data?.value || DEFAULT_SETTINGS;
-    setSettings({ ...DEFAULT_SETTINGS, ...nextSettings,
-      owner:{...DEFAULT_SETTINGS.owner, ...(nextSettings.owner || {})},
-      payment:{...DEFAULT_SETTINGS.payment, ...(nextSettings.payment || {})}
-    });
-    setTempSettings({ ...DEFAULT_SETTINGS, ...nextSettings,
-      owner:{...DEFAULT_SETTINGS.owner, ...(nextSettings.owner || {})},
-      payment:{...DEFAULT_SETTINGS.payment, ...(nextSettings.payment || {})}
-    });
+    const mergedSettings = { 
+      ...DEFAULT_SETTINGS, 
+      ...nextSettings,
+      owner: { ...DEFAULT_SETTINGS.owner, ...(nextSettings.owner || {}) },
+      payment: { ...DEFAULT_SETTINGS.payment, ...(nextSettings.payment || {}) }
+    };
+    setSettings(mergedSettings);
+    setTempSettings(mergedSettings);
+
     if (session) {
-      const o = await supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending:false });
+      const o = await supabase.from('orders').select('*, order_items(*, products(*))').order('created_at', { ascending:false });
       if (!o.error) setOrders(o.data || []);
       const pt = await supabase.from('partners').select('*').order('created_at');
       if (!pt.error) setPartners(pt.data || []);
@@ -89,8 +94,8 @@ export default function App() {
   useEffect(() => { loadAll(); }, [session]);
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
-  const revenue = orders.reduce((sum,o) => sum + Number(o.total || 0), 0);
-  const profit = orders.reduce((sum,o) => sum + Number(o.profit || 0), 0);
+  const revenue = orders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const profit = orders.reduce((sum, o) => sum + Number(o.profit || 0), 0);
 
   async function login(e) {
     e.preventDefault(); setBusy(true);
@@ -106,9 +111,9 @@ export default function App() {
   }
 
   function addToCart(p) {
-    if (p.stock < 1) return setNotice('দুঃখিত, পণ্যটি স্টকে নেই।');
+    if (p.stock < 1) return setNotice('দুঃখিত, পণ্যটি বর্তমানে স্টকে নেই।');
     const found = cart.find(x => x.id === p.id);
-    if (found && found.qty >= p.stock) return setNotice('স্টকের বেশি কার্টে যোগ করা যাবে না।');
+    if (found && found.qty >= p.stock) return setNotice('স্টকের অতিরিক্ত পণ্য কার্টে যোগ করা যাবে না।');
     setCart(old => found ? old.map(x => x.id === p.id ? {...x, qty:x.qty+1} : x) : [...old, {...p, qty:1}]);
   }
 
@@ -129,8 +134,10 @@ export default function App() {
       p_items: items
     });
     setBusy(false);
-    if (error) { setNotice('অর্ডার করা যায়নি: ' + error.message); return; }
-    setSuccess(data?.order_code || 'অর্ডার গ্রহণ করা হয়েছে');
+    if (error) { setNotice('অর্ডার সাবমিট হয়নি: ' + error.message); return; }
+    
+    const code = data?.order_code || 'অর্ডার সফল';
+    setLastOrderCode(code);
     setCart([]); setCheckout({name:'',phone:'',address:'',trxId:''});
     await loadAll();
   }
@@ -158,7 +165,7 @@ export default function App() {
       const combinedImages = [...(target.images || []), ...uploadedUrls];
       if (editing) setEditing({ ...editing, images: combinedImages, image_url: target.image_url || combinedImages[0] });
       else setNewProduct({ ...newProduct, images: combinedImages, image_url: combinedImages[0] });
-      setNotice('ছবি আপলোড সফল হয়েছে!');
+      setNotice('ছবি সফলভাবে আপলোড হয়েছে!');
     } catch (err) { setNotice(err.message); }
     setBusy(false);
   }
@@ -184,54 +191,88 @@ export default function App() {
       setEditing(null); 
       setNewProduct({name:'', cost:'', price:'', stock:'', description:'', benefits:'', drawbacks:'', image_url:'', images:[]});
       await loadAll(); 
-      setNotice('পণ্য সংরক্ষিত হয়েছে।');
+      setNotice('পণ্য সফলভাবে সংরক্ষিত হয়েছে।');
     } catch(err) { setNotice(err.message); }
     setBusy(false);
   }
 
   async function deleteProduct(id) {
-    if (!confirm('মুছে ফেলতে চান?')) return;
+    if (!confirm('পণ্যটি কি মুছে ফেলতে চান?')) return;
     await supabase.from('products').delete().eq('id', id);
     await loadAll();
+  }
+
+  async function saveSettings(e) {
+    e.preventDefault(); setBusy(true);
+    try {
+      const formElements = e.currentTarget.elements;
+      let next = { ...tempSettings };
+      
+      const logoFile = formElements.logoInput?.files?.[0];
+      const bannerFile = formElements.bannerInput?.files?.[0];
+      const bgFile = formElements.bgInput?.files?.[0];
+
+      if (logoFile) next.logo = await uploadImage(logoFile, 'branding');
+      if (bannerFile) next.banner = await uploadImage(bannerFile, 'branding');
+      if (bgFile) next.dashboardBg = await uploadImage(bgFile, 'branding');
+
+      const { error } = await supabase.from('site_settings').upsert({ id: 1, value: next });
+      if (error) throw error;
+
+      setSettings(next);
+      setTempSettings(next);
+      setNotice('ওয়েবসাইট সেটিংস সফলভাবে আপডেট করা হয়েছে!');
+    } catch(err) { setNotice(err.message); }
+    setBusy(false);
+  }
+
+  async function updateOrderStatus(orderId, status) {
+    const { error } = await supabase.from('orders').update({ status }).eq('id', orderId);
+    if (!error) await loadAll();
   }
 
   return (
     <div style={{fontFamily:"Inter,Arial,sans-serif",background:'#f8fafc',minHeight:'100vh',color:'#1e293b',display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
       <div>
-        <nav style={{background:'#0f172a',color:'#fff',padding:'15px 30px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div onClick={()=>setTab('shop')} style={{cursor:'pointer',fontSize:22,fontWeight:900,color:'#38bdf8'}}>Friends Bazar</div>
-          <div style={{display:'flex',gap:12}}>
+        <nav style={{background:'#0f172a',color:'#fff',padding:'15px 30px',display:'flex',justifyContent:'space-between',alignItems:'center',boxShadow:'0 2px 10px rgba(0,0,0,0.1)'}}>
+          <div onClick={()=>setTab('shop')} style={{cursor:'pointer',fontSize:24,fontWeight:900,color:'#38bdf8',display:'flex',alignItems:'center',gap:10}}>
+            {settings.logo && <img src={settings.logo} alt="Logo" style={{height:35,width:35,borderRadius:'50%',objectFit:'cover'}}/>}
+            Friends Bazar
+          </div>
+          <div style={{display:'flex',gap:12,alignItems:'center'}}>
             <button style={btn(tab==='shop'?'#38bdf8':'#334155')} onClick={()=>setTab('shop')}>🛍️ শপ</button>
             <button style={btn(tab==='cart'?'#38bdf8':'#334155')} onClick={()=>setTab('cart')}>🛒 কার্ট ({cart.reduce((a,b)=>a+b.qty,0)})</button>
             <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>setTab('admin')}>⚙️ অ্যাডমিন</button>
           </div>
         </nav>
 
-        {notice && <div onClick={()=>setNotice('')} style={{background:'#38bdf8',color:'#0f172a',padding:10,textAlign:'center',cursor:'pointer'}}>{notice} ✕</div>}
+        {notice && <div onClick={()=>setNotice('')} style={{background:'#38bdf8',color:'#0f172a',padding:12,textAlign:'center',cursor:'pointer',fontWeight:600}}>{notice} ✕</div>}
         
         <main style={{maxWidth:1200,margin:'30px auto',padding:'0 20px'}}>
           {tab==='shop' && (
             <div>
-              <section style={{backgroundImage:`linear-gradient(#0f172acc,#1e293bcc),url("${settings.banner}")`,backgroundSize:'cover',padding:'60px 20px',borderRadius:20,textAlign:'center',color:'#fff',marginBottom:40}}>
-                <h1 style={{fontSize:38,color:'#38bdf8'}}>স্বাগতম Friends Bazaar-এ</h1>
-                <p>{settings.owner.description}</p>
+              <section style={{backgroundImage:`linear-gradient(#0f172acc,#1e293bcc),url("${settings.banner}")`,backgroundSize:'cover',backgroundPosition:'center',padding:'80px 20px',borderRadius:20,textAlign:'center',color:'#fff',marginBottom:40,boxShadow:'0 10px 25px rgba(0,0,0,0.1)'}}>
+                <h1 style={{fontSize:42,color:'#38bdf8',marginBottom:15}}>স্বাগতম Friends Bazar-এ</h1>
+                <p style={{fontSize:18,maxWidth:700,margin:'0 auto',lineHeight:1.6}}>{settings.owner.description}</p>
               </section>
               
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',gap:25}}>
                 {products.map(p=>(
-                  <div key={p.id} style={{background:'#fff',borderRadius:16,overflow:'hidden',boxShadow:'0 4px 20px rgba(0,0,0,0.04)',display:'flex',flexDirection:'column'}}>
-                    <div onClick={()=>{ setSelectedProduct(p); setActiveImageIndex(0); }} style={{cursor:'pointer',height:200,background:'#f1f5f9'}}>
+                  <div key={p.id} style={{background:'#fff',borderRadius:16,overflow:'hidden',boxShadow:'0 4px 20px rgba(0,0,0,0.04)',display:'flex',flexDirection:'column',border:'1px solid #e2e8f0',transition:'transform 0.2s'}}>
+                    <div onClick={()=>{ setSelectedProduct(p); setActiveImageIndex(0); }} style={{cursor:'pointer',height:220,background:'#f1f5f9',position:'relative'}}>
                       <img src={p.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80'} alt={p.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                      <span style={{position:'absolute',top:12,right:12,background:p.stock>0?'#059669':'#dc2626',color:'#fff',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700}}>
+                        {p.stock>0 ? `স্টক: ${p.stock}` : 'স্টক আউট'}
+                      </span>
                     </div>
                     <div style={{padding:20,flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
                       <div>
-                        <h3 onClick={()=>{ setSelectedProduct(p); setActiveImageIndex(0); }} style={{cursor:'pointer',fontSize:18,marginBottom:8}}>{p.name}</h3>
+                        <h3 onClick={()=>{ setSelectedProduct(p); setActiveImageIndex(0); }} style={{cursor:'pointer',fontSize:18,marginBottom:8,color:'#0f172a'}}>{p.name}</h3>
                         <strong style={{color:'#059669',fontSize:22}}>{money(p.price)}</strong>
-                        <p style={{fontSize:13,color:p.stock>0?'#059669':'#dc2626'}}>{p.stock>0?`স্টক আছে: ${p.stock} টি`:'স্টক আউট'}</p>
                       </div>
                       <div style={{display:'flex',gap:10,marginTop:20}}>
                         <button style={{...btn('#0284c7'),flex:1}} disabled={p.stock<1} onClick={()=>addToCart(p)}>কার্টে যোগ</button>
-                        <button style={{...btn('#059669'),flex:1}} disabled={p.stock<1} onClick={()=>{addToCart(p);setTab('cart')}}>Buy Now</button>
+                        <button style={{...btn('#059669'),flex:1}} disabled={p.stock<1} onClick={()=>{addToCart(p);setTab('cart')}}>অর্ডার করুন</button>
                       </div>
                     </div>
                   </div>
@@ -240,50 +281,110 @@ export default function App() {
 
               {selectedProduct && (
                 <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.75)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:3000,padding:20}}>
-                  <div style={{background:'#fff',padding:30,borderRadius:20,maxWidth:700,width:'100%',maxHeight:'90vh',overflowY:'auto',position:'relative'}}>
-                    <button onClick={()=>setSelectedProduct(null)} style={{position:'absolute',top:15,right:15,background:'#ef4444',color:'#fff',border:0,borderRadius:'50%',width:32,height:32,cursor:'pointer'}}>✕</button>
-                    <h2>{selectedProduct.name}</h2>
-                    <strong style={{color:'#059669',fontSize:24}}>{money(selectedProduct.price)}</strong>
-                    <div style={{textAlign:'center',margin:'15px 0'}}>
-                      <img src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image_url} alt="" style={{maxHeight:250,width:'100%',objectFit:'contain',borderRadius:8}}/>
+                  <div style={{background:'#fff',padding:30,borderRadius:20,maxWidth:750,width:'100%',maxHeight:'90vh',overflowY:'auto',position:'relative'}}>
+                    <button onClick={()=>setSelectedProduct(null)} style={{position:'absolute',top:15,right:15,background:'#ef4444',color:'#fff',border:0,borderRadius:'50%',width:32,height:32,cursor:'pointer',fontWeight:700}}>✕</button>
+                    <h2 style={{fontSize:24,marginBottom:5}}>{selectedProduct.name}</h2>
+                    <strong style={{color:'#059669',fontSize:26}}>{money(selectedProduct.price)}</strong>
+                    <p style={{fontSize:14,color:selectedProduct.stock>0?'#059669':'#dc2626',fontWeight:600,marginTop:5}}>
+                      {selectedProduct.stock>0 ? `উপলব্ধ স্টক: ${selectedProduct.stock} টি` : 'পণ্যটি স্টকে নেই'}
+                    </p>
+
+                    <div style={{textAlign:'center',margin:'20px 0',position:'relative'}}>
+                      <img 
+                        src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image_url} 
+                        alt="" 
+                        onClick={()=>setIsZoomed(true)} 
+                        style={{maxHeight:280,width:'100%',objectFit:'contain',borderRadius:10,cursor:'zoom-in',border:'1px solid #e2e8f0'}}
+                        title="ফটো জুম করতে ক্লিক করুন"
+                      />
+                      <p style={{fontSize:12,color:'#64748b',marginTop:5}}>বড় করে দেখতে ছবিতে ক্লিক করুন</p>
+                      
                       {selectedProduct.images?.length > 1 && (
-                        <div style={{display:'flex',gap:8,justifyContent:'center',marginTop:10,overflowX:'auto'}}>
+                        <div style={{display:'flex',gap:8,justifyContent:'center',marginTop:12,overflowX:'auto',paddingBottom:5}}>
                           {selectedProduct.images.map((img, idx)=>(
-                            <img key={idx} src={img} alt="" onClick={()=>setActiveImageIndex(idx)} style={{width:55,height:55,objectFit:'cover',borderRadius:6,border:activeImageIndex===idx?'2px solid #0284c7':'2px solid transparent',cursor:'pointer'}}/>
+                            <img key={idx} src={img} alt="" onClick={()=>setActiveImageIndex(idx)} style={{width:60,height:60,objectFit:'cover',borderRadius:8,border:activeImageIndex===idx?'2px solid #0284c7':'2px solid #cbd5e1',cursor:'pointer'}}/>
                           ))}
                         </div>
                       )}
                     </div>
-                    <p><b>বিবরণ:</b> {selectedProduct.description || 'নেই'}</p>
-                    <p><b>সুবিধা:</b> {selectedProduct.benefits || 'নেই'}</p>
-                    <p><b>সতর্কতা:</b> {selectedProduct.drawbacks || 'নেই'}</p>
-                    <button style={{...btn('#059669'),width:'100%',marginTop:20}} onClick={()=>{addToCart(selectedProduct);setSelectedProduct(null);setTab('cart');}}>এখনই কিনুন</button>
+
+                    <div style={{display:'flex',flexDirection:'column',gap:12,background:'#f8fafc',padding:15,borderRadius:12,marginTop:15}}>
+                      <p style={{margin:0}}><b>পণ্যের বিবরণ:</b> {selectedProduct.description || 'বিবরণ দেওয়া হয়নি।'}</p>
+                      <p style={{margin:0}}><b>উপকারিতা:</b> {selectedProduct.benefits || 'তথ্য নেই।'}</p>
+                      <p style={{margin:0}}><b>সতর্কতা/বিশেষ দ্রষ্টব্য:</b> {selectedProduct.drawbacks || 'তথ্য নেই।'}</p>
+                    </div>
+
+                    <button style={{...btn('#059669'),width:'100%',marginTop:20,padding:14,fontSize:16}} disabled={selectedProduct.stock<1} onClick={()=>{addToCart(selectedProduct);setSelectedProduct(null);setTab('cart');}}>
+                      🛒 এখনই কিনুন (Buy Now)
+                    </button>
                   </div>
+                </div>
+              )}
+
+              {/* ইমেজ জুম মোড */}
+              {isZoomed && selectedProduct && (
+                <div onClick={()=>setIsZoomed(false)} style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.9)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:4000,cursor:'zoom-out'}}>
+                  <img src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image_url} alt="" style={{maxWidth:'95vw',maxHeight:'95vh',objectFit:'contain'}}/>
                 </div>
               )}
             </div>
           )}
 
           {tab==='cart' && (
-            <div style={{maxWidth:800,margin:'0 auto'}}>
-              <h2>শপিং কার্ট</h2>
-              {!cart.length ? <p>কার্ট খালি। <button onClick={()=>setTab('shop')}>শপে যান</button></p> :
-              <div>
-                {cart.map(x=>(
-                  <div key={x.id} style={{display:'flex',justifyContent:'space-between',padding:10,borderBottom:'1px solid #ddd'}}>
-                    <span>{x.name} ({money(x.price)} × {x.qty})</span>
-                    <div><button onClick={()=>changeQty(x.id,-1)}>-</button> {x.qty} <button onClick={()=>changeQty(x.id,1)}>+</button></div>
+            <div style={{maxWidth:800,margin:'0 auto',...panel}}>
+              <h2>🛒 শপিং কার্ট ও চেকআউট</h2>
+              {lastOrderCode && (
+                <div style={{background:'#d1fae5',color:'#065f46',padding:15,borderRadius:10,marginBottom:20,border:'1px solid #34d399'}}>
+                  <h3 style={{margin:'0 0 5px 0'}}>🎉 অর্ডার সফলভাবে গ্রহণ করা হয়েছে!</h3>
+                  <p style={{margin:0}}>আপনার অর্ডার আইডি: <b>{lastOrderCode}</b>। খুব শীঘ্রই আমাদের প্রতিনিধি আপনার সাথে যোগাযোগ করবেন।</p>
+                </div>
+              )}
+
+              {!cart.length ? (
+                <div style={{textAlign:'center',padding:'40px 0'}}>
+                  <p style={{fontSize:18,color:'#64748b'}}>আপনার কার্ট খালি রয়েছে।</p>
+                  <button style={{...btn('#0284c7'),marginTop:10}} onClick={()=>setTab('shop')}>শপে ফিরে যান</button>
+                </div>
+              ) : (
+                <div>
+                  <div style={{marginBottom:20}}>
+                    {cart.map(x=>(
+                      <div key={x.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 0',borderBottom:'1px solid #e2e8f0'}}>
+                        <div>
+                          <h4 style={{margin:0}}>{x.name}</h4>
+                          <span style={{fontSize:14,color:'#64748b'}}>{money(x.price)} × {x.qty}</span>
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:12}}>
+                          <strong>{money(x.price * x.qty)}</strong>
+                          <div style={{display:'flex',gap:5,alignItems:'center'}}>
+                            <button onClick={()=>changeQty(x.id,-1)} style={{padding:'4px 10px',background:'#cbd5e1',border:0,borderRadius:6,cursor:'pointer',fontWeight:700}}>-</button>
+                            <span>{x.qty}</span>
+                            <button onClick={()=>changeQty(x.id,1)} style={{padding:'4px 10px',background:'#cbd5e1',border:0,borderRadius:6,cursor:'pointer',fontWeight:700}}>+</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:20,fontWeight:700,marginTop:20}}>
+                      <span>মোট প্রদেয়:</span>
+                      <span style={{color:'#059669'}}>{money(cartTotal)}</span>
+                    </div>
                   </div>
-                ))}
-                <h3>মোট: {money(cartTotal)}</h3>
-                <form onSubmit={placeOrder} style={{display:'flex',flexDirection:'column',gap:10,marginTop:20}}>
-                  <input style={inputStyle} required placeholder="নাম" value={checkout.name} onChange={e=>setCheckout({...checkout,name:e.target.value})}/>
-                  <input style={inputStyle} required placeholder="ফোন" value={checkout.phone} onChange={e=>setCheckout({...checkout,phone:e.target.value})}/>
-                  <textarea style={inputStyle} required placeholder="ঠিকানা" value={checkout.address} onChange={e=>setCheckout({...checkout,address:e.target.value})}/>
-                  <input style={inputStyle} required placeholder="বিকাশ TrxID" value={checkout.trxId} onChange={e=>setCheckout({...checkout,trxId:e.target.value})}/>
-                  <button style={btn('#e11d48')}>অর্ডার কনফার্ম করুন</button>
-                </form>
-              </div>}
+
+                  <div style={{background:'#f1f5f9',padding:20,borderRadius:12,marginBottom:20}}>
+                    <h4 style={{margin:'0 0 10px 0',color:'#0f172a'}}>পেমেন্ট নির্দেশিকা:</h4>
+                    <p style={{margin:'0 0 5px 0'}}>প্রথমে নিচের নম্বরে পেমেন্ট সম্পূর্ণ করুন:</p>
+                    <p style={{margin:0,fontSize:16}}><b>{settings.payment.methodName}:</b> <span style={{color:'#0284c7',fontWeight:700}}>{settings.payment.accountNumber}</span></p>
+                  </div>
+
+                  <form onSubmit={placeOrder} style={{display:'flex',flexDirection:'column',gap:15}}>
+                    <input style={inputStyle} required placeholder="আপনার পূর্ণ নাম" value={checkout.name} onChange={e=>setCheckout({...checkout,name:e.target.value})}/>
+                    <input style={inputStyle} required placeholder="মোবাইল নম্বর (যেমন: 017xxxxxxxx)" value={checkout.phone} onChange={e=>setCheckout({...checkout,phone:e.target.value})}/>
+                    <textarea style={{...inputStyle,height:80}} required placeholder="পূর্ণাঙ্গ ঠিকানা (বাসা, রোড, থানা, জেলা)" value={checkout.address} onChange={e=>setCheckout({...checkout,address:e.target.value})}/>
+                    <input style={inputStyle} required placeholder="বিকাশ TrxID (লেনদেন আইডি)" value={checkout.trxId} onChange={e=>setCheckout({...checkout,trxId:e.target.value})}/>
+                    <button style={btn('#e11d48')} disabled={busy}>অর্ডার কনফার্ম করুন</button>
+                  </form>
+                </div>
+              )}
             </div>
           )}
 
@@ -291,30 +392,157 @@ export default function App() {
             <div>
               {!isAdmin ? (
                 <div style={{maxWidth:400,margin:'40px auto',...panel,textAlign:'center'}}>
-                  <h2>অ্যাডমিন লগইন</h2>
-                  <form onSubmit={login} style={{display:'flex',flexDirection:'column',gap:10,marginTop:15}}>
-                    <input style={inputStyle} type="email" required placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/>
-                    <input style={inputStyle} type="password" required placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)}/>
-                    <button style={btn()}>লগইন</button>
+                  <h2>🔐 অ্যাডমিন / পার্টনার লগইন</h2>
+                  <form onSubmit={login} style={{display:'flex',flexDirection:'column',gap:15,marginTop:20}}>
+                    <input style={inputStyle} type="email" required placeholder="ইমেইল অ্যাড্রেস" value={email} onChange={e=>setEmail(e.target.value)}/>
+                    <input style={inputStyle} type="password" required placeholder="পাসওয়ার্ড" value={password} onChange={e=>setPassword(e.target.value)}/>
+                    <button style={btn()}>লগইন করুন</button>
                   </form>
                 </div>
               ) : (
-                <div>
-                  <h2>অ্যাডমিন প্যানেল</h2>
-                  <button style={btn('#ef4444')} onClick={logout}>লগআউট</button>
+                <div style={{backgroundImage:`linear-gradient(#f8fafcee,#f8fafcee),url("${settings.dashboardBg}")`,backgroundSize:'cover',padding:20,borderRadius:20}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:25}}>
+                    <h2>⚙️ ড্যাশবোর্ড ও অ্যাডমিন প্যানেল</h2>
+                    <button style={btn('#ef4444')} onClick={logout}>লগআউট</button>
+                  </div>
+
+                  {/* পরিসংখ্যান কার্ড */}
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:20,marginBottom:30}}>
+                    <div style={{background:'#0f172a',color:'#fff',padding:20,borderRadius:12}}>
+                      <p style={{margin:'0 0 5px 0',color:'#94a3b8'}}>মোট অর্ডার</p>
+                      <h3 style={{margin:0,fontSize:26}}>{orders.length} টি</h3>
+                    </div>
+                    <div style={{background:'#059669',color:'#fff',padding:20,borderRadius:12}}>
+                      <p style={{margin:'0 0 5px 0',color:'#d1fae5'}}>মোট বিক্রয় (Revenue)</p>
+                      <h3 style={{margin:0,fontSize:26}}>{money(revenue)}</h3>
+                    </div>
+                    <div style={{background:'#0284c7',color:'#fff',padding:20,borderRadius:12}}>
+                      <p style={{margin:'0 0 5px 0',color:'#bae6fd'}}>আনুমানিক প্রফিট</p>
+                      <h3 style={{margin:0,fontSize:26}}>{money(profit)}</h3>
+                    </div>
+                  </div>
+
+                  {/* ওয়েবসাইট সেটিংস ও ব্র‍্যান্ডিং */}
                   <div style={panel}>
-                    <h3>নতুন পণ্য যোগ করুন</h3>
-                    <form onSubmit={saveProduct} style={{display:'flex',flexDirection:'column',gap:10,marginTop:10}}>
-                      <input style={inputStyle} required placeholder="নাম" value={(editing||newProduct).name} onChange={e=>editing?setEditing({...editing,name:e.target.value}):setNewProduct({...newProduct,name:e.target.value})}/>
-                      <input style={inputStyle} required type="number" placeholder="ক্রয়মূল্য" value={(editing||newProduct).cost} onChange={e=>editing?setEditing({...editing,cost:e.target.value}):setNewProduct({...newProduct,cost:e.target.value})}/>
-                      <input style={inputStyle} required type="number" placeholder="বিক্রয়মূল্য" value={(editing||newProduct).price} onChange={e=>editing?setEditing({...editing,price:e.target.value}):setNewProduct({...newProduct,price:e.target.value})}/>
-                      <input style={inputStyle} required type="number" placeholder="স্টক" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>
-                      <textarea style={inputStyle} placeholder="বিবরণ" value={(editing||newProduct).description||''} onChange={e=>editing?setEditing({...editing,description:e.target.value}):setNewProduct({...newProduct,description:e.target.value})}/>
-                      <textarea style={inputStyle} placeholder="সুবিধা" value={(editing||newProduct).benefits||''} onChange={e=>editing?setEditing({...editing,benefits:e.target.value}):setNewProduct({...newProduct,benefits:e.target.value})}/>
-                      <textarea style={inputStyle} placeholder="সতর্কতা" value={(editing||newProduct).drawbacks||''} onChange={e=>editing?setEditing({...editing,drawbacks:e.target.value}):setNewProduct({...newProduct,drawbacks:e.target.value})}/>
-                      <input type="file" accept="image/*" multiple onChange={handleMultipleImagesUpload}/>
-                      <button style={btn()}>{editing?'আপডেট করুন':'যুক্ত করুন'}</button>
+                    <h3>🎨 ওয়েবসাইট কাস্টমাইজেশন ও ব্র‍্যান্ডিং</h3>
+                    <form onSubmit={saveSettings} style={{display:'flex',flexDirection:'column',gap:15,marginTop:15}}>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15}}>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>ওয়েবসাইটের নাম</label>
+                          <input style={inputStyle} value={tempSettings.owner.name} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, name:e.target.value}})}/>
+                        </div>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>যোগাযোগ নম্বর</label>
+                          <input style={inputStyle} value={tempSettings.owner.phone} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, phone:e.target.value}})}/>
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>ঠিকানা</label>
+                        <input style={inputStyle} value={tempSettings.owner.address} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, address:e.target.value}})}/>
+                      </div>
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>ফ্রেন্ডস বাজার পরিচিতি (Bio / Description)</label>
+                        <textarea style={{...inputStyle,height:70}} value={tempSettings.owner.description} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, description:e.target.value}})}/>
+                      </div>
+
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(250px, 1fr))',gap:15,marginTop:10}}>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>লোগো ইমেজ ফাইল</label>
+                          <input type="file" id="logoInput" accept="image/*" style={inputStyle}/>
+                        </div>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>শপ ব্যানার ইমেজ ফাইল</label>
+                          <input type="file" id="bannerInput" accept="image/*" style={inputStyle}/>
+                        </div>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>ড্যাশবোর্ড ব্যাকগ্রাউন্ড ইমেজ</label>
+                          <input type="file" id="bgInput" accept="image/*" style={inputStyle}/>
+                        </div>
+                      </div>
+
+                      <button style={{...btn('#0284c7'),marginTop:10}}>সেটিংস ও ব্র‍্যান্ডিং সেভ করুন</button>
                     </form>
+                  </div>
+
+                  {/* প্রোডাক্ট ম্যানেজমেন্ট */}
+                  <div style={panel}>
+                    <h3>{editing ? '✏️ পণ্য এডিট করুন' : '➕ নতুন পণ্য যোগ করুন'}</h3>
+                    <form onSubmit={saveProduct} style={{display:'flex',flexDirection:'column',gap:12,marginTop:15}}>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:12}}>
+                        <input style={inputStyle} required placeholder="পণ্যের নাম" value={(editing||newProduct).name} onChange={e=>editing?setEditing({...editing,name:e.target.value}):setNewProduct({...newProduct,name:e.target.value})}/>
+                        <input style={inputStyle} required type="number" placeholder="ক্রয়মূল্য (Cost)" value={(editing||newProduct).cost} onChange={e=>editing?setEditing({...editing,cost:e.target.value}):setNewProduct({...newProduct,cost:e.target.value})}/>
+                        <input style={inputStyle} required type="number" placeholder="বিক্রয়মূল্য (Price)" value={(editing||newProduct).price} onChange={e=>editing?setEditing({...editing,price:e.target.value}):setNewProduct({...newProduct,price:e.target.value})}/>
+                        <input style={inputStyle} required type="number" placeholder="স্টক পরিমাণ" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>
+                      </div>
+                      <textarea style={inputStyle} placeholder="পণ্যের বিবরণ" value={(editing||newProduct).description||''} onChange={e=>editing?setEditing({...editing,description:e.target.value}):setNewProduct({...newProduct,description:e.target.value})}/>
+                      <textarea style={inputStyle} placeholder="উপকারিতা" value={(editing||newProduct).benefits||''} onChange={e=>editing?setEditing({...editing,benefits:e.target.value}):setNewProduct({...newProduct,benefits:e.target.value})}/>
+                      <textarea style={inputStyle} placeholder="সতর্কতা / বিশেষ দ্রষ্টব্য" value={(editing||newProduct).drawbacks||''} onChange={e=>editing?setEditing({...editing,drawbacks:e.target.value}):setNewProduct({...newProduct,drawbacks:e.target.value})}/>
+                      
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>একাধিক ছবি আপলোড করুন (Multi-image upload)</label>
+                        <input type="file" accept="image/*" multiple onChange={handleMultipleImagesUpload}/>
+                      </div>
+
+                      <div style={{display:'flex',gap:10}}>
+                        <button style={btn('#059669')}>{editing?'পণ্য আপডেট করুন':'পণ্য যুক্ত করুন'}</button>
+                        {editing && <button type="button" onClick={()=>setEditing(null)} style={btn('#64748b')}>বাতিল</button>}
+                      </div>
+                    </form>
+
+                    <h4 style={{marginTop:30,marginBottom:15}}>বর্তমান প্রোডাক্ট তালিকা</h4>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))',gap:15}}>
+                      {products.map(p=>(
+                        <div key={p.id} style={{background:'#f8fafc',padding:15,borderRadius:12,border:'1px solid #e2e8f0',display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+                          <div>
+                            <img src={p.image_url} alt="" style={{width:'100%',height:120,objectFit:'cover',borderRadius:8,marginBottom:10}}/>
+                            <h4 style={{margin:'0 0 5px 0'}}>{p.name}</h4>
+                            <p style={{margin:0,color:'#059669',fontWeight:700}}>{money(p.price)} (স্টক: {p.stock})</p>
+                          </div>
+                          <div style={{display:'flex',gap:8,marginTop:15}}>
+                            <button onClick={()=>setEditing(p)} style={{...btn('#0284c7'),flex:1,padding:8}}>এডিট</button>
+                            <button onClick={()=>deleteProduct(p.id)} style={{...btn('#dc2626'),flex:1,padding:8}}>ডিলিট</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* অর্ডার লিস্ট */}
+                  <div style={panel}>
+                    <h3>📦 কাস্টমার অর্ডারসমূহ</h3>
+                    <div style={{overflowX:'auto'}}>
+                      <table style={{width:'100%',borderCollapse:'collapse',marginTop:10,fontSize:14}}>
+                        <thead>
+                          <tr style={{background:'#f1f5f9',textAlign:'left'}}>
+                            <th style={{padding:10}}>অর্ডার কোড</th>
+                            <th style={{padding:10}}>গ্রাহক</th>
+                            <th style={{padding:10}}>ঠিকানা ও ফোন</th>
+                            <th style={{padding:10}}>TrxID</th>
+                            <th style={{padding:10}}>মোট টাকা</th>
+                            <th style={{padding:10}}>স্ট্যাটাস</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {orders.map(o=>(
+                            <tr key={o.id} style={{borderBottom:'1px solid #e2e8f0'}}>
+                              <td style={{padding:10,fontWeight:700}}>{o.order_code}</td>
+                              <td style={{padding:10}}>{o.customer_name}</td>
+                              <td style={{padding:10}}>{o.phone}<br/>{o.address}</td>
+                              <td style={{padding:10}}>{o.trx_id}</td>
+                              <td style={{padding:10,fontWeight:700,color:'#059669'}}>{money(o.total)}</td>
+                              <td style={{padding:10}}>
+                                <select value={o.status} onChange={e=>updateOrderStatus(o.id, e.target.value)} style={{padding:6,borderRadius:6}}>
+                                  <option value="Pending">Pending</option>
+                                  <option value="Processing">Processing</option>
+                                  <option value="Completed">Completed</option>
+                                  <option value="Cancelled">Cancelled</option>
+                                </select>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
@@ -322,9 +550,14 @@ export default function App() {
           )}
         </main>
       </div>
-      <footer style={{background:'#0f172a',color:'#cbd5e1',padding:30,textAlign:'center',marginTop:50}}>
-        <p>{settings.owner.address} | {settings.owner.phone}</p>
-        <small>© Friends Bazaar</small>
+
+      <footer style={{background:'#0f172a',color:'#cbd5e1',padding:40,textAlign:'center',marginTop:60}}>
+        <div style={{maxWidth:800,margin:'0 auto'}}>
+          <h3 style={{color:'#38bdf8',marginBottom:10}}>Friends Bazar (ফ্রেন্ডস বাজার)</h3>
+          <p style={{lineHeight:1.6,marginBottom:15}}>{settings.owner.description}</p>
+          <p style={{margin:5}}>📍 {settings.owner.address} | 📞 ফোন: {settings.owner.phone} | ✉️ {settings.owner.email}</p>
+          <small style={{display:'block',marginTop:20,color:'#64748b'}}>© 2026 Friends Bazar. All rights reserved.</small>
+        </div>
       </footer>
     </div>
   );
