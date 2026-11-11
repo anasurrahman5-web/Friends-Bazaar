@@ -95,7 +95,7 @@ export default function App() {
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
   
-  // অ্যানালিটিক্স ও প্রফিট হিসাব
+  // অ্যানালিটিক্স ও সেলস হিসাব
   const validOrders = useMemo(() => orders.filter(o => o.status !== 'Cancelled'), [orders]);
   const revenue = validOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
   const totalProfit = validOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0);
@@ -107,20 +107,29 @@ export default function App() {
     const currentYear = now.getFullYear();
 
     let dailyP = 0, weeklyP = 0, monthlyP = 0, yearlyP = 0;
+    let monthlyS = 0, yearlyS = 0;
+    
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(now.getDate() - 7);
 
     validOrders.forEach(o => {
       const oDate = new Date(o.created_at);
       const p = Number(o.profit || 0);
+      const t = Number(o.total || 0);
 
       if (oDate.toDateString() === todayStr) dailyP += p;
       if (oDate >= oneWeekAgo) weeklyP += p;
-      if (oDate.getMonth() === currentMonth && oDate.getFullYear() === currentYear) monthlyP += p;
-      if (oDate.getFullYear() === currentYear) yearlyP += p;
+      if (oDate.getMonth() === currentMonth && oDate.getFullYear() === currentYear) {
+        monthlyP += p;
+        monthlyS += t;
+      }
+      if (oDate.getFullYear() === currentYear) {
+        yearlyP += p;
+        yearlyS += t;
+      }
     });
 
-    return { dailyP, weeklyP, monthlyP, yearlyP };
+    return { dailyP, weeklyP, monthlyP, yearlyP, monthlyS, yearlyS };
   }, [validOrders]);
 
   async function login(e) {
@@ -537,18 +546,18 @@ export default function App() {
                     <button style={btn('#ef4444')} onClick={logout}>লগআউট</button>
                   </div>
 
-                  {/* মূল পরিসংখ্যান কার্ড */}
+                  {/* মূল পরিসংখ্যান কার্ড (ইংরেজি লেবেল ঠিক করা হয়েছে) */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:20,marginBottom:20}}>
                     <div style={{background:'#0f172a',color:'#fff',padding:20,borderRadius:12}}>
-                      <p style={{margin:'0 0 5px 0',color:'#94a3b8'}}>মোট অর্ডার</p>
-                      <h3 style={{margin:0,fontSize:26}}>{orders.length} টি</h3>
+                      <p style={{margin:'0 0 5px 0',color:'#94a3b8'}}>Total Orders</p>
+                      <h3 style={{margin:0,fontSize:26}}>{orders.length} Orders</h3>
                     </div>
                     <div style={{background:'#059669',color:'#fff',padding:20,borderRadius:12}}>
-                      <p style={{margin:'0 0 5px 0',color:'#d1fae5'}}>মোট বিক্রয় (Revenue)</p>
+                      <p style={{margin:'0 0 5px 0',color:'#d1fae5'}}>Total Revenue</p>
                       <h3 style={{margin:0,fontSize:26}}>{money(revenue)}</h3>
                     </div>
                     <div style={{background:'#0284c7',color:'#fff',padding:20,borderRadius:12}}>
-                      <p style={{margin:'0 0 5px 0',color:'#bae6fd'}}>মোট প্রফিট</p>
+                      <p style={{margin:'0 0 5px 0',color:'#bae6fd'}}>Total Profit</p>
                       <h3 style={{margin:0,fontSize:26}}>{money(totalProfit)}</h3>
                     </div>
                   </div>
@@ -573,15 +582,15 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* গ্রাফ ও পাই-চার্ট ড্যাশবোর্ড সেকশন */}
+                  {/* গ্রাফ ও সেলস গ্রোথ ড্যাশবোর্ড সেকশন */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))',gap:25,marginBottom:25}}>
-                    {/* গ্রোথ ভিজ্যুয়ালাইজেশন বার গ্রাফ */}
+                    {/* প্রফিট গ্রোথ ওভারভিউ (ডেইলি গ্রোথ নামে আপডেট করা) */}
                     <div style={panel}>
                       <h3 style={{marginTop:0,marginBottom:15}}>📊 প্রফিট গ্রোথ ওভারভিউ</h3>
                       <div style={{display:'flex',flexDirection:'column',gap:12}}>
                         <div>
                           <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
-                            <span>দৈনিক লক্ষ্য</span>
+                            <span>ডেইলি গ্রোথ (Daily Growth)</span>
                             <span style={{fontWeight:700}}>{money(analytics.dailyP)}</span>
                           </div>
                           <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
@@ -590,7 +599,7 @@ export default function App() {
                         </div>
                         <div>
                           <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
-                            <span>সাপ্তাহিক গ্রোথ</span>
+                            <span>সাপ্তাহিক গ্রোথ (Weekly Growth)</span>
                             <span style={{fontWeight:700}}>{money(analytics.weeklyP)}</span>
                           </div>
                           <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
@@ -599,7 +608,7 @@ export default function App() {
                         </div>
                         <div>
                           <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
-                            <span>মাসিক গ্রোথ</span>
+                            <span>মাসিক গ্রোথ (Monthly Growth)</span>
                             <span style={{fontWeight:700}}>{money(analytics.monthlyP)}</span>
                           </div>
                           <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
@@ -609,26 +618,54 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* অর্ডার স্ট্যাটাস ব্রেকডাউন (পাই চার্ট স্টাইল) */}
+                    {/* মাসিক ও বার্ষিক সেলস স্ট্যাটিসটিক্স (নতুন যুক্ত করা হয়েছে) */}
                     <div style={panel}>
-                      <h3 style={{marginTop:0,marginBottom:15}}>🥧 অর্ডার স্ট্যাটাস ব্রেকডাউন</h3>
-                      <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                        <div style={{display:'flex',justifyContent:'space-between',padding:8,background:'#f8fafc',borderRadius:6}}>
-                          <span>⏳ পেন্ডিং অর্ডার</span>
-                          <span style={{fontWeight:700}}>{orders.filter(o => o.status === 'Pending').length} টি</span>
+                      <h3 style={{marginTop:0,marginBottom:15}}>📈 সেলস পরিসংখ্যান (Sales Analytics)</h3>
+                      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                        <div>
+                          <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
+                            <span style={{fontWeight:600}}>চলতি মাসের মোট সেলস (Monthly Sales)</span>
+                            <span style={{fontWeight:700, color:'#059669'}}>{money(analytics.monthlyS)}</span>
+                          </div>
+                          <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
+                            <div style={{background:'#059669',width:`${Math.min(100, (analytics.monthlyS / 250000) * 100)}%`,height:'100%'}}></div>
+                          </div>
                         </div>
-                        <div style={{display:'flex',justifyContent:'space-between',padding:8,background:'#f8fafc',borderRadius:6}}>
-                          <span>⚙️ প্রসেসিং অর্ডার</span>
-                          <span style={{fontWeight:700}}>{orders.filter(o => o.status === 'Processing').length} টি</span>
+                        <div>
+                          <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
+                            <span style={{fontWeight:600}}>চলতি বছরের মোট সেলস (Yearly Sales)</span>
+                            <span style={{fontWeight:700, color:'#0284c7'}}>{money(analytics.yearlyS)}</span>
+                          </div>
+                          <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
+                            <div style={{background:'#0284c7',width:`${Math.min(100, (analytics.yearlyS / 3000000) * 100)}%`,height:'100%'}}></div>
+                          </div>
                         </div>
-                        <div style={{display:'flex',justifyContent:'space-between',padding:8,background:'#f8fafc',borderRadius:6}}>
-                          <span>✅ সম্পন্ন অর্ডার (Completed)</span>
-                          <span style={{fontWeight:700,color:'#059669'}}>{orders.filter(o => o.status === 'Completed').length} টি</span>
+                        <div style={{marginTop:5, background:'#f8fafc', padding:10, borderRadius:8, fontSize:13, color:'#64748b'}}>
+                          💡 টিপস: আপনার টোটাল সেলস এবং প্রফিট এই গ্রাফের মাধ্যমে রিয়েল-টাইমে আপডেট হতে থাকবে।
                         </div>
-                        <div style={{display:'flex',justifyContent:'space-between',padding:8,background:'#f8fafc',borderRadius:6}}>
-                          <span>❌ বাতিল অর্ডার (Cancelled)</span>
-                          <span style={{fontWeight:700,color:'#dc2626'}}>{orders.filter(o => o.status === 'Cancelled').length} টি</span>
-                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* অর্ডার স্ট্যাটাস ব্রেকডাউন পাই-চার্ট */}
+                  <div style={panel}>
+                    <h3 style={{marginTop:0,marginBottom:15}}>🥧 অর্ডার স্ট্যাটাস ব্রেকডাউন</h3>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:15}}>
+                      <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#f8fafc',borderRadius:8, border:'1px solid #e2e8f0'}}>
+                        <span>⏳ পেন্ডিং (Pending)</span>
+                        <span style={{fontWeight:700}}>{orders.filter(o => o.status === 'Pending').length} টি</span>
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#f8fafc',borderRadius:8, border:'1px solid #e2e8f0'}}>
+                        <span>⚙️ প্রসেসিং (Processing)</span>
+                        <span style={{fontWeight:700}}>{orders.filter(o => o.status === 'Processing').length} টি</span>
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#f8fafc',borderRadius:8, border:'1px solid #e2e8f0'}}>
+                        <span>✅ সম্পন্ন (Completed)</span>
+                        <span style={{fontWeight:700,color:'#059669'}}>{orders.filter(o => o.status === 'Completed').length} টি</span>
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#f8fafc',borderRadius:8, border:'1px solid #e2e8f0'}}>
+                        <span>❌ বাতিল (Cancelled)</span>
+                        <span style={{fontWeight:700,color:'#dc2626'}}>{orders.filter(o => o.status === 'Cancelled').length} টি</span>
                       </div>
                     </div>
                   </div>
