@@ -94,8 +94,34 @@ export default function App() {
   useEffect(() => { loadAll(); }, [session]);
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
-  const revenue = orders.filter(o => o.status !== 'Cancelled').reduce((sum, o) => sum + Number(o.total || 0), 0);
-  const profit = orders.filter(o => o.status !== 'Cancelled').reduce((sum, o) => sum + Number(o.profit || 0), 0);
+  
+  // অ্যানালিটিক্স ও প্রফিট হিসাব
+  const validOrders = useMemo(() => orders.filter(o => o.status !== 'Cancelled'), [orders]);
+  const revenue = validOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const totalProfit = validOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0);
+
+  const analytics = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toDateString();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    let dailyP = 0, weeklyP = 0, monthlyP = 0, yearlyP = 0;
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(now.getDate() - 7);
+
+    validOrders.forEach(o => {
+      const oDate = new Date(o.created_at);
+      const p = Number(o.profit || 0);
+
+      if (oDate.toDateString() === todayStr) dailyP += p;
+      if (oDate >= oneWeekAgo) weeklyP += p;
+      if (oDate.getMonth() === currentMonth && oDate.getFullYear() === currentYear) monthlyP += p;
+      if (oDate.getFullYear() === currentYear) yearlyP += p;
+    });
+
+    return { dailyP, weeklyP, monthlyP, yearlyP };
+  }, [validOrders]);
 
   async function login(e) {
     e.preventDefault(); setBusy(true);
@@ -136,7 +162,6 @@ export default function App() {
     setBusy(false);
     if (error) { setNotice('অর্ডার সাবমিট হয়নি: ' + error.message); return; }
     
-    // সদ্য তৈরি হওয়া অর্ডারের সম্পূর্ণ তথ্য ফেচ করা
     const newOrderId = data?.order_id;
     if (newOrderId) {
       const fetchedOrder = await supabase.from('orders').select('*, order_items(*, products(*))').eq('id', newOrderId).single();
@@ -279,7 +304,7 @@ export default function App() {
         <div class="invoice-box">
           <div class="header">
             <div>
-              <h2 style="margin:0; color:#0f172a;">Friends Bazar</h2>
+              <h2 style="margin:0; color:#0f172a;">Friends Bazaar</h2>
               <p style="margin:5px 0 0 0; font-size:13px; color:#64748b;">${settings.owner.address} | ফোন: ${settings.owner.phone}</p>
             </div>
             <div style="text-align: right;">
@@ -323,7 +348,7 @@ export default function App() {
           </div>
 
           <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-            আমাদের সাথে থাকার জন্য ধন্যবাদ! — Friends Bazar
+            আমাদের সাথে থাকার জন্য ধন্যবাদ! — Friends Bazaar
           </div>
         </div>
         <script>
@@ -342,7 +367,7 @@ export default function App() {
         <nav style={{background:'#0f172a',color:'#fff',padding:'15px 30px',display:'flex',justifyContent:'space-between',alignItems:'center',boxShadow:'0 2px 10px rgba(0,0,0,0.1)'}}>
           <div onClick={()=>setTab('shop')} style={{cursor:'pointer',fontSize:24,fontWeight:900,color:'#38bdf8',display:'flex',alignItems:'center',gap:10}}>
             {settings.logo && <img src={settings.logo} alt="Logo" style={{height:35,width:35,borderRadius:'50%',objectFit:'cover'}}/>}
-            Friends Bazar
+            Friends Bazaar
           </div>
           <div style={{display:'flex',gap:12,alignItems:'center'}}>
             <button style={btn(tab==='shop'?'#38bdf8':'#334155')} onClick={()=>setTab('shop')}>🛍️ শপ</button>
@@ -357,7 +382,7 @@ export default function App() {
           {tab==='shop' && (
             <div>
               <section style={{backgroundImage:`linear-gradient(#0f172acc,#1e293bcc),url("${settings.banner}")`,backgroundSize:'cover',backgroundPosition:'center',padding:'80px 20px',borderRadius:20,textAlign:'center',color:'#fff',marginBottom:40,boxShadow:'0 10px 25px rgba(0,0,0,0.1)'}}>
-                <h1 style={{fontSize:42,color:'#38bdf8',marginBottom:15}}>স্বাগতম Friends Bazar-এ</h1>
+                <h1 style={{fontSize:42,color:'#38bdf8',marginBottom:15}}>স্বাগতম Friends Bazaar-এ</h1>
                 <p style={{fontSize:18,maxWidth:700,margin:'0 auto',lineHeight:1.6}}>{settings.owner.description}</p>
               </section>
               
@@ -508,12 +533,12 @@ export default function App() {
               ) : (
                 <div style={{backgroundImage:`linear-gradient(#f8fafcee,#f8fafcee),url("${settings.dashboardBg}")`,backgroundSize:'cover',padding:20,borderRadius:20}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:25}}>
-                    <h2>⚙️ ড্যাশবোর্ড ও অ্যাডমিন প্যানেল</h2>
+                    <h2>⚙️ বিজনেস অ্যানালিটিক্স ও অ্যাডমিন প্যানেল</h2>
                     <button style={btn('#ef4444')} onClick={logout}>লগআউট</button>
                   </div>
 
-                  {/* পরিসংখ্যান কার্ড */}
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:20,marginBottom:30}}>
+                  {/* মূল পরিসংখ্যান কার্ড */}
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:20,marginBottom:20}}>
                     <div style={{background:'#0f172a',color:'#fff',padding:20,borderRadius:12}}>
                       <p style={{margin:'0 0 5px 0',color:'#94a3b8'}}>মোট অর্ডার</p>
                       <h3 style={{margin:0,fontSize:26}}>{orders.length} টি</h3>
@@ -523,8 +548,88 @@ export default function App() {
                       <h3 style={{margin:0,fontSize:26}}>{money(revenue)}</h3>
                     </div>
                     <div style={{background:'#0284c7',color:'#fff',padding:20,borderRadius:12}}>
-                      <p style={{margin:'0 0 5px 0',color:'#bae6fd'}}>আনুমানিক প্রফিট</p>
-                      <h3 style={{margin:0,fontSize:26}}>{money(profit)}</h3>
+                      <p style={{margin:'0 0 5px 0',color:'#bae6fd'}}>মোট প্রফিট</p>
+                      <h3 style={{margin:0,fontSize:26}}>{money(totalProfit)}</h3>
+                    </div>
+                  </div>
+
+                  {/* প্রফিট অ্যানালিটিক্স (দৈনিক, সাপ্তাহিক, মাসিক, বার্ষিক) */}
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:20,marginBottom:30}}>
+                    <div style={{background:'#fff',padding:20,borderRadius:12,borderLeft:'5px solid #10b981',boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
+                      <p style={{margin:'0 0 5px 0',color:'#64748b',fontWeight:600}}>আজকের প্রফিট (Daily)</p>
+                      <h4 style={{margin:0,fontSize:20,color:'#059669'}}>{money(analytics.dailyP)}</h4>
+                    </div>
+                    <div style={{background:'#fff',padding:20,borderRadius:12,borderLeft:'5px solid #3b82f6',boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
+                      <p style={{margin:'0 0 5px 0',color:'#64748b',fontWeight:600}}>সাপ্তাহিক প্রফিট (Weekly)</p>
+                      <h4 style={{margin:0,fontSize:20,color:'#0284c7'}}>{money(analytics.weeklyP)}</h4>
+                    </div>
+                    <div style={{background:'#fff',padding:20,borderRadius:12,borderLeft:'5px solid #8b5cf6',boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
+                      <p style={{margin:'0 0 5px 0',color:'#64748b',fontWeight:600}}>মাসিক প্রফিট (Monthly)</p>
+                      <h4 style={{margin:0,fontSize:20,color:'#7c3aed'}}>{money(analytics.monthlyP)}</h4>
+                    </div>
+                    <div style={{background:'#fff',padding:20,borderRadius:12,borderLeft:'5px solid #f59e0b',boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
+                      <p style={{margin:'0 0 5px 0',color:'#64748b',fontWeight:600}}>বার্ষিক প্রফিট (Yearly)</p>
+                      <h4 style={{margin:0,fontSize:20,color:'#d97706'}}>{money(analytics.yearlyP)}</h4>
+                    </div>
+                  </div>
+
+                  {/* গ্রাফ ও পাই-চার্ট ড্যাশবোর্ড সেকশন */}
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))',gap:25,marginBottom:25}}>
+                    {/* গ্রোথ ভিজ্যুয়ালাইজেশন বার গ্রাফ */}
+                    <div style={panel}>
+                      <h3 style={{marginTop:0,marginBottom:15}}>📊 প্রফিট গ্রোথ ওভারভিউ</h3>
+                      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                        <div>
+                          <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
+                            <span>দৈনিক লক্ষ্য</span>
+                            <span style={{fontWeight:700}}>{money(analytics.dailyP)}</span>
+                          </div>
+                          <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
+                            <div style={{background:'#10b981',width:`${Math.min(100, (analytics.dailyP / 5000) * 100)}%`,height:'100%'}}></div>
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
+                            <span>সাপ্তাহিক গ্রোথ</span>
+                            <span style={{fontWeight:700}}>{money(analytics.weeklyP)}</span>
+                          </div>
+                          <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
+                            <div style={{background:'#3b82f6',width:`${Math.min(100, (analytics.weeklyP / 30000) * 100)}%`,height:'100%'}}></div>
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
+                            <span>মাসিক গ্রোথ</span>
+                            <span style={{fontWeight:700}}>{money(analytics.monthlyP)}</span>
+                          </div>
+                          <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
+                            <div style={{background:'#8b5cf6',width:`${Math.min(100, (analytics.monthlyP / 120000) * 100)}%`,height:'100%'}}></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* অর্ডার স্ট্যাটাস ব্রেকডাউন (পাই চার্ট স্টাইল) */}
+                    <div style={panel}>
+                      <h3 style={{marginTop:0,marginBottom:15}}>🥧 অর্ডার স্ট্যাটাস ব্রেকডাউন</h3>
+                      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                        <div style={{display:'flex',justifyContent:'space-between',padding:8,background:'#f8fafc',borderRadius:6}}>
+                          <span>⏳ পেন্ডিং অর্ডার</span>
+                          <span style={{fontWeight:700}}>{orders.filter(o => o.status === 'Pending').length} টি</span>
+                        </div>
+                        <div style={{display:'flex',justifyContent:'space-between',padding:8,background:'#f8fafc',borderRadius:6}}>
+                          <span>⚙️ প্রসেসিং অর্ডার</span>
+                          <span style={{fontWeight:700}}>{orders.filter(o => o.status === 'Processing').length} টি</span>
+                        </div>
+                        <div style={{display:'flex',justifyContent:'space-between',padding:8,background:'#f8fafc',borderRadius:6}}>
+                          <span>✅ সম্পন্ন অর্ডার (Completed)</span>
+                          <span style={{fontWeight:700,color:'#059669'}}>{orders.filter(o => o.status === 'Completed').length} টি</span>
+                        </div>
+                        <div style={{display:'flex',justifyContent:'space-between',padding:8,background:'#f8fafc',borderRadius:6}}>
+                          <span>❌ বাতিল অর্ডার (Cancelled)</span>
+                          <span style={{fontWeight:700,color:'#dc2626'}}>{orders.filter(o => o.status === 'Cancelled').length} টি</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -564,7 +669,7 @@ export default function App() {
                         <input style={inputStyle} value={tempSettings.owner.address} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, address:e.target.value}})}/>
                       </div>
                       <div>
-                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>ফ্রেন্ডস বাজার পরিচিতি (Bio / Description)</label>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>Friends Bazaar পরিচিতি (Bio / Description)</label>
                         <textarea style={{...inputStyle,height:70}} value={tempSettings.owner.description} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, description:e.target.value}})}/>
                       </div>
 
@@ -680,10 +785,10 @@ export default function App() {
 
       <footer style={{background:'#0f172a',color:'#cbd5e1',padding:40,textAlign:'center',marginTop:60}}>
         <div style={{maxWidth:800,margin:'0 auto'}}>
-          <h3 style={{color:'#38bdf8',marginBottom:10}}>Friends Bazar (ফ্রেন্ডস বাজার)</h3>
+          <h3 style={{color:'#38bdf8',marginBottom:10}}>Friends Bazaar</h3>
           <p style={{lineHeight:1.6,marginBottom:15}}>{settings.owner.description}</p>
           <p style={{margin:5}}>📍 {settings.owner.address} | 📞 ফোন: {settings.owner.phone} | ✉️ {settings.owner.email}</p>
-          <small style={{display:'block',marginTop:20,color:'#64748b'}}>© 2026 Friends Bazar. All rights reserved.</small>
+          <small style={{display:'block',marginTop:20,color:'#64748b'}}>© 2026 Friends Bazaar. All rights reserved.</small>
         </div>
       </footer>
     </div>
