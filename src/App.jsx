@@ -31,7 +31,7 @@ export default function App() {
   const [partners, setPartners] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [cart, setCart] = useState([]);
-  const [checkout, setCheckout] = useState({ name:'', phone:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
+  const [checkout, setCheckout] = useState({ name:'', phone:'', address:'', trxId:'' });
   const [lastOrder, setLastOrder] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -95,6 +95,7 @@ export default function App() {
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
   
+  // অ্যানালিটিক্স ও সেলস হিসাব
   const validOrders = useMemo(() => orders.filter(o => o.status !== 'Cancelled'), [orders]);
   const revenue = validOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
   const totalProfit = validOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0);
@@ -158,32 +159,17 @@ export default function App() {
   async function placeOrder(e) {
     e.preventDefault();
     if (!cart.length) return;
-
-    if (checkout.phone.length > 11) {
-      return setNotice('ফোন নম্বর ১১ ডিজিটের বেশি হতে পারবে না।');
-    }
-
-    if (checkout.paymentMethod === 'bKash' && !checkout.trxId.trim()) {
-      return setNotice('বিকাশ পেমেন্টের জন্য ট্রানজেকশন আইডি (TrxID) দিতে হবে।');
-    }
-
     setBusy(true);
-    const items = cart.map(x => ({ product_id: x.id, qty: x.qty }));
-    
+    const items = cart.map(x => ({ product_id:x.id, qty:x.qty }));
     const { data, error } = await supabase.rpc('create_public_order', {
       p_customer_name: checkout.name.trim(),
       p_phone: checkout.phone.trim(),
       p_address: checkout.address.trim(),
-      p_payment_method: checkout.paymentMethod,
-      p_trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId.trim() : 'Cash on Delivery',
+      p_trx_id: checkout.trxId.trim(),
       p_items: items
     });
-    
     setBusy(false);
-    if (error) { 
-      setNotice('অর্ডার সাবমিট হয়নি: ' + error.message); 
-      return; 
-    }
+    if (error) { setNotice('অর্ডার সাবমিট হয়নি: ' + error.message); return; }
     
     const newOrderId = data?.order_id;
     if (newOrderId) {
@@ -191,10 +177,8 @@ export default function App() {
       if (!fetchedOrder.error) setLastOrder(fetchedOrder.data);
     }
 
-    setCart([]); 
-    setCheckout({ name:'', phone:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
+    setCart([]); setCheckout({name:'',phone:'',address:'',trxId:''});
     await loadAll();
-    setNotice('🎉 আপনার অর্ডারটি সফলভাবে কনফার্ম হয়েছে!');
   }
 
   async function uploadImage(file, path) {
@@ -343,8 +327,7 @@ export default function App() {
             <p style="margin:4px 0;"><b>গ্রাহকের নাম:</b> ${order.customer_name}</p>
             <p style="margin:4px 0;"><b>ফোন নম্বর:</b> ${order.phone}</p>
             <p style="margin:4px 0;"><b>ঠিকানা:</b> ${order.address}</p>
-            <p style="margin:4px 0;"><b>পেমেন্ট মাধ্যম:</b> ${order.trx_id === 'Cash on Delivery' ? 'ক্যাশ অন ডেলিভারি' : 'বিকাশ'}</p>
-            ${order.trx_id !== 'Cash on Delivery' ? `<p style="margin:4px 0;"><b>বিকাশ TrxID:</b> ${order.trx_id}</p>` : ''}
+            <p style="margin:4px 0;"><b>বিকাশ TrxID:</b> ${order.trx_id}</p>
             <p style="margin:4px 0;"><b>অর্ডার স্ট্যাটাস:</b> <span style="color:${order.status==='Cancelled'?'#dc2626':'#059669'}">${order.status}</span></p>
           </div>
 
@@ -491,7 +474,7 @@ export default function App() {
               <h2>🛒 শপিং কার্ট ও চেকআউট</h2>
               {lastOrder ? (
                 <div style={{background:'#d1fae5',color:'#065f46',padding:20,borderRadius:12,marginBottom:20,border:'1px solid #34d399'}}>
-                  <h3 style={{margin:'0 0 5px 0'}}>🎉 ধন্যবাদ! আপনার অর্ডারটি সফলভাবে কনফার্ম হয়েছে!</h3>
+                  <h3 style={{margin:'0 0 5px 0'}}>🎉 অর্ডার সফলভাবে গ্রহণ করা হয়েছে!</h3>
                   <p style={{margin:'0 0 15px 0'}}>অর্ডার আইডি: <b>{lastOrder.order_code}</b></p>
                   <button style={btn('#0284c7')} onClick={()=>downloadInvoice(lastOrder)}>📥 অর্ডার ইনভয়েস ডাউনলোড/প্রিন্ট করুন</button>
                 </div>
@@ -527,60 +510,17 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* পেমেন্ট পদ্ধতি সিলেকশন */}
                   <div style={{background:'#f1f5f9',padding:20,borderRadius:12,marginBottom:20}}>
-                    <h4 style={{margin:'0 0 10px 0',color:'#0f172a'}}>পেমেন্ট মাধ্যম সিলেক্ট করুন:</h4>
-                    <div style={{display:'flex',gap:20,marginBottom:15}}>
-                      <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontWeight:600}}>
-                        <input 
-                          type="radio" 
-                          name="paymentMethod" 
-                          checked={checkout.paymentMethod === 'Cash on Delivery'} 
-                          onChange={()=>setCheckout({...checkout, paymentMethod: 'Cash on Delivery'})}
-                        /> ক্যাশ অন ডেলিভারি (Cash on Delivery)
-                      </label>
-                      <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontWeight:600}}>
-                        <input 
-                          type="radio" 
-                          name="paymentMethod" 
-                          checked={checkout.paymentMethod === 'bKash'} 
-                          onChange={()=>setCheckout({...checkout, paymentMethod: 'bKash'})}
-                        /> বিকাশ পেমেন্ট (bKash)
-                      </label>
-                    </div>
-
-                    {checkout.paymentMethod === 'bKash' && (
-                      <div style={{background:'#fff',padding:15,borderRadius:8,border:'1px solid #cbd5e1'}}>
-                        <p style={{margin:'0 0 5px 0'}}>প্রথমে নিচের নম্বরে সেন্ড মানি করুন:</p>
-                        <p style={{margin:0,fontSize:16}}><b>{settings.payment.methodName}:</b> <span style={{color:'#0284c7',fontWeight:700}}>{settings.payment.accountNumber}</span></p>
-                      </div>
-                    )}
+                    <h4 style={{margin:'0 0 10px 0',color:'#0f172a'}}>পেমেন্ট নির্দেশিকা:</h4>
+                    <p style={{margin:'0 0 5px 0'}}>প্রথমে নিচের নম্বরে পেমেন্ট সম্পূর্ণ করুন:</p>
+                    <p style={{margin:0,fontSize:16}}><b>{settings.payment.methodName}:</b> <span style={{color:'#0284c7',fontWeight:700}}>{settings.payment.accountNumber}</span></p>
                   </div>
 
                   <form onSubmit={placeOrder} style={{display:'flex',flexDirection:'column',gap:15}}>
                     <input style={inputStyle} required placeholder="আপনার পূর্ণ নাম" value={checkout.name} onChange={e=>setCheckout({...checkout,name:e.target.value})}/>
-                    
-                    {/* ফোন নম্বর (সর্বোচ্চ ১১ ডিজিট) */}
-                    <input 
-                      style={inputStyle} 
-                      required 
-                      type="tel"
-                      maxLength={11}
-                      placeholder="মোবাইল নম্বর (যেমন: 017xxxxxxxx)" 
-                      value={checkout.phone} 
-                      onChange={e=>{
-                        const val = e.target.value.replace(/\D/g, '');
-                        if(val.length <= 11) setCheckout({...checkout, phone: val});
-                      }}
-                    />
-                    
+                    <input style={inputStyle} required placeholder="মোবাইল নম্বর (যেমন: 017xxxxxxxx)" value={checkout.phone} onChange={e=>setCheckout({...checkout,phone:e.target.value})}/>
                     <textarea style={{...inputStyle,height:80}} required placeholder="পূর্ণাঙ্গ ঠিকানা (বাসা, রোড, থানা, জেলা)" value={checkout.address} onChange={e=>setCheckout({...checkout,address:e.target.value})}/>
-                    
-                    {/* বিকাশ সিলেক্ট করলে ট্রানজেকশন আইডি ফিল্ড দেখাবে */}
-                    {checkout.paymentMethod === 'bKash' && (
-                      <input style={inputStyle} required placeholder="বিকাশ TrxID (লেনদেন আইডি)" value={checkout.trxId} onChange={e=>setCheckout({...checkout,trxId:e.target.value})}/>
-                    )}
-
+                    <input style={inputStyle} required placeholder="বিকাশ TrxID (লেনদেন আইডি)" value={checkout.trxId} onChange={e=>setCheckout({...checkout,trxId:e.target.value})}/>
                     <button style={btn('#e11d48')} disabled={busy}>অর্ডার কনফার্ম করুন</button>
                   </form>
                 </div>
@@ -606,7 +546,7 @@ export default function App() {
                     <button style={btn('#ef4444')} onClick={logout}>লগআউট</button>
                   </div>
 
-                  {/* মূল পরিসংখ্যান কার্ড */}
+                  {/* মূল পরিসংখ্যান কার্ড (ইংরেজি লেবেল ঠিক করা হয়েছে) */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:20,marginBottom:20}}>
                     <div style={{background:'#0f172a',color:'#fff',padding:20,borderRadius:12}}>
                       <p style={{margin:'0 0 5px 0',color:'#94a3b8'}}>Total Orders</p>
@@ -622,7 +562,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* প্রফিট অ্যানালিটিক্স */}
+                  {/* প্রফিট অ্যানালিটিক্স (দৈনিক, সাপ্তাহিক, মাসিক, বার্ষিক) */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:20,marginBottom:30}}>
                     <div style={{background:'#fff',padding:20,borderRadius:12,borderLeft:'5px solid #10b981',boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
                       <p style={{margin:'0 0 5px 0',color:'#64748b',fontWeight:600}}>আজকের প্রফিট (Daily)</p>
@@ -644,6 +584,7 @@ export default function App() {
 
                   {/* গ্রাফ ও সেলস গ্রোথ ড্যাশবোর্ড সেকশন */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))',gap:25,marginBottom:25}}>
+                    {/* প্রফিট গ্রোথ ওভারভিউ (ডেইলি গ্রোথ নামে আপডেট করা) */}
                     <div style={panel}>
                       <h3 style={{marginTop:0,marginBottom:15}}>📊 প্রফিট গ্রোথ ওভারভিউ</h3>
                       <div style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -677,6 +618,7 @@ export default function App() {
                       </div>
                     </div>
 
+                    {/* মাসিক ও বার্ষিক সেলস স্ট্যাটিসটিক্স (নতুন যুক্ত করা হয়েছে) */}
                     <div style={panel}>
                       <h3 style={{marginTop:0,marginBottom:15}}>📈 সেলস পরিসংখ্যান (Sales Analytics)</h3>
                       <div style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -698,11 +640,139 @@ export default function App() {
                             <div style={{background:'#0284c7',width:`${Math.min(100, (analytics.yearlyS / 3000000) * 100)}%`,height:'100%'}}></div>
                           </div>
                         </div>
+                        <div style={{marginTop:5, background:'#f8fafc', padding:10, borderRadius:8, fontSize:13, color:'#64748b'}}>
+                          💡 টিপস: আপনার টোটাল সেলস এবং প্রফিট এই গ্রাফের মাধ্যমে রিয়েল-টাইমে আপডেট হতে থাকবে।
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* অর্ডার লিস্ট ও ইনভয়েস ম্যানেজমেন্ট */}
+                  {/* অর্ডার স্ট্যাটাস ব্রেকডাউন পাই-চার্ট */}
+                  <div style={panel}>
+                    <h3 style={{marginTop:0,marginBottom:15}}>🥧 অর্ডার স্ট্যাটাস ব্রেকডাউন</h3>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:15}}>
+                      <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#f8fafc',borderRadius:8, border:'1px solid #e2e8f0'}}>
+                        <span>⏳ পেন্ডিং (Pending)</span>
+                        <span style={{fontWeight:700}}>{orders.filter(o => o.status === 'Pending').length} টি</span>
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#f8fafc',borderRadius:8, border:'1px solid #e2e8f0'}}>
+                        <span>⚙️ প্রসেসিং (Processing)</span>
+                        <span style={{fontWeight:700}}>{orders.filter(o => o.status === 'Processing').length} টি</span>
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#f8fafc',borderRadius:8, border:'1px solid #e2e8f0'}}>
+                        <span>✅ সম্পন্ন (Completed)</span>
+                        <span style={{fontWeight:700,color:'#059669'}}>{orders.filter(o => o.status === 'Completed').length} টি</span>
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',padding:12,background:'#f8fafc',borderRadius:8, border:'1px solid #e2e8f0'}}>
+                        <span>❌ বাতিল (Cancelled)</span>
+                        <span style={{fontWeight:700,color:'#dc2626'}}>{orders.filter(o => o.status === 'Cancelled').length} টি</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* পার্টনার ম্যানেজমেন্ট */}
+                  <div style={panel}>
+                    <h3>👥 পার্টনার ম্যানেজমেন্ট (অ্যাক্সেস প্রদান)</h3>
+                    <form onSubmit={addPartner} style={{display:'flex',gap:10,marginTop:15}}>
+                      <input style={{...inputStyle, flex:1}} type="email" required placeholder="পার্টনারের ইমেইল অ্যাড্রেস দিন" value={newPartnerEmail} onChange={e=>setNewPartnerEmail(e.target.value)}/>
+                      <button style={btn('#059669')}>পার্টনার যুক্ত করুন</button>
+                    </form>
+                    <div style={{marginTop:15,display:'flex',flexWrap:'wrap',gap:10}}>
+                      {partners.map(pt=>(
+                        <div key={pt.id} style={{background:'#f1f5f9',padding:'8px 15px',borderRadius:8,display:'flex',alignItems:'center',gap:10,border:'1px solid #cbd5e1'}}>
+                          <span>{pt.email}</span>
+                          <button onClick={()=>deletePartner(pt.id)} style={{background:'#dc2626',color:'#fff',border:0,borderRadius:4,padding:'2px 8px',cursor:'pointer'}}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ওয়েবসাইট সেটিংস ও ব্র‍্যান্ডিং */}
+                  <div style={panel}>
+                    <h3>🎨 ওয়েবসাইট কাস্টমাইজেশন ও ব্র‍্যান্ডিং</h3>
+                    <form onSubmit={saveSettings} style={{display:'flex',flexDirection:'column',gap:15,marginTop:15}}>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15}}>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>ওয়েবসাইটের নাম</label>
+                          <input style={inputStyle} value={tempSettings.owner.name} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, name:e.target.value}})}/>
+                        </div>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>যোগাযোগ নম্বর</label>
+                          <input style={inputStyle} value={tempSettings.owner.phone} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, phone:e.target.value}})}/>
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>ঠিকানা</label>
+                        <input style={inputStyle} value={tempSettings.owner.address} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, address:e.target.value}})}/>
+                      </div>
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>Friends Bazaar পরিচিতি (Bio / Description)</label>
+                        <textarea style={{...inputStyle,height:70}} value={tempSettings.owner.description} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, description:e.target.value}})}/>
+                      </div>
+
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(250px, 1fr))',gap:15,marginTop:10}}>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>লোগো ইমেজ ফাইল</label>
+                          <input type="file" id="logoInput" accept="image/*" style={inputStyle}/>
+                        </div>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>শপ ব্যানার ইমেজ ফাইল</label>
+                          <input type="file" id="bannerInput" accept="image/*" style={inputStyle}/>
+                        </div>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>ড্যাশবোর্ড ব্যাকগ্রাউন্ড ইমেজ</label>
+                          <input type="file" id="bgInput" accept="image/*" style={inputStyle}/>
+                        </div>
+                      </div>
+
+                      <button style={{...btn('#0284c7'),marginTop:10}}>সেটিংস ও ব্র‍্যান্ডিং সেভ করুন</button>
+                    </form>
+                  </div>
+
+                  {/* প্রোডাক্ট ম্যানেজমেন্ট */}
+                  <div style={panel}>
+                    <h3>{editing ? '✏️ পণ্য এডিট করুন' : '➕ নতুন পণ্য যোগ করুন'}</h3>
+                    <form onSubmit={saveProduct} style={{display:'flex',flexDirection:'column',gap:12,marginTop:15}}>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:12}}>
+                        <input style={inputStyle} required placeholder="পণ্যের নাম" value={(editing||newProduct).name} onChange={e=>editing?setEditing({...editing,name:e.target.value}):setNewProduct({...newProduct,name:e.target.value})}/>
+                        <input style={inputStyle} required type="number" placeholder="ক্রয়মূল্য (Cost)" value={(editing||newProduct).cost} onChange={e=>editing?setEditing({...editing,cost:e.target.value}):setNewProduct({...newProduct,cost:e.target.value})}/>
+                        <input style={inputStyle} required type="number" placeholder="বিক্রয়মূল্য (Price)" value={(editing||newProduct).price} onChange={e=>editing?setEditing({...editing,price:e.target.value}):setNewProduct({...newProduct,price:e.target.value})}/>
+                        <input style={inputStyle} required type="number" placeholder="স্টক পরিমাণ" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>
+                      </div>
+                      <textarea style={inputStyle} placeholder="পণ্যের বিবরণ" value={(editing||newProduct).description||''} onChange={e=>editing?setEditing({...editing,description:e.target.value}):setNewProduct({...newProduct,description:e.target.value})}/>
+                      <textarea style={inputStyle} placeholder="উপকারিতা" value={(editing||newProduct).benefits||''} onChange={e=>editing?setEditing({...editing,benefits:e.target.value}):setNewProduct({...newProduct,benefits:e.target.value})}/>
+                      <textarea style={inputStyle} placeholder="সতর্কতা / বিশেষ দ্রষ্টব্য" value={(editing||newProduct).drawbacks||''} onChange={e=>editing?setEditing({...editing,drawbacks:e.target.value}):setNewProduct({...newProduct,drawbacks:e.target.value})}/>
+                      
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>একাধিক ছবি আপলোড করুন (Multi-image upload)</label>
+                        <input type="file" accept="image/*" multiple onChange={handleMultipleImagesUpload}/>
+                      </div>
+
+                      <div style={{display:'flex',gap:10}}>
+                        <button style={btn('#059669')}>{editing?'পণ্য আপডেট করুন':'পণ্য যুক্ত করুন'}</button>
+                        {editing && <button type="button" onClick={()=>setEditing(null)} style={btn('#64748b')}>বাতিল</button>}
+                      </div>
+                    </form>
+
+                    <h4 style={{marginTop:30,marginBottom:15}}>বর্তমান প্রোডাক্ট তালিকা</h4>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))',gap:15}}>
+                      {products.map(p=>(
+                        <div key={p.id} style={{background:'#f8fafc',padding:15,borderRadius:12,border:'1px solid #e2e8f0',display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+                          <div>
+                            <img src={p.image_url} alt="" style={{width:'100%',height:120,objectFit:'cover',borderRadius:8,marginBottom:10}}/>
+                            <h4 style={{margin:'0 0 5px 0'}}>{p.name}</h4>
+                            <p style={{margin:0,color:'#059669',fontWeight:700}}>{money(p.price)} (স্টক: {p.stock})</p>
+                          </div>
+                          <div style={{display:'flex',gap:8,marginTop:15}}>
+                            <button onClick={()=>setEditing(p)} style={{...btn('#0284c7'),flex:1,padding:8}}>এডিট</button>
+                            <button onClick={()=>deleteProduct(p.id)} style={{...btn('#dc2626'),flex:1,padding:8}}>ডিলিট</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* অর্ডার লিস্ট ও ইনভয়েস ডাউনলোড */}
                   <div style={panel}>
                     <h3>📦 কাস্টমার অর্ডারসমূহ ও ইনভয়েস ম্যানেজমেন্ট</h3>
                     <div style={{overflowX:'auto'}}>
@@ -712,7 +782,7 @@ export default function App() {
                             <th style={{padding:10}}>অর্ডার কোড</th>
                             <th style={{padding:10}}>গ্রাহক</th>
                             <th style={{padding:10}}>ঠিকানা ও ফোন</th>
-                            <th style={{padding:10}}>পেমেন্ট মাধ্যম</th>
+                            <th style={{padding:10}}>TrxID</th>
                             <th style={{padding:10}}>মোট টাকা</th>
                             <th style={{padding:10}}>স্ট্যাটাস</th>
                             <th style={{padding:10}}>ইনভয়েস</th>
@@ -724,9 +794,7 @@ export default function App() {
                               <td style={{padding:10,fontWeight:700}}>{o.order_code}</td>
                               <td style={{padding:10}}>{o.customer_name}</td>
                               <td style={{padding:10}}>{o.phone}<br/>{o.address}</td>
-                              <td style={{padding:10}}>
-                                {o.trx_id === 'Cash on Delivery' ? <span style={{color:'#d97706', fontWeight:600}}>COD (নগদ)</span> : <span>বিকাশ<br/><small>Trx: {o.trx_id}</small></span>}
-                              </td>
+                              <td style={{padding:10}}>{o.trx_id}</td>
                               <td style={{padding:10,fontWeight:700,color:'#059669'}}>{money(o.total)}</td>
                               <td style={{padding:10}}>
                                 <select value={o.status} onChange={e=>updateOrderStatus(o.id, e.target.value)} style={{padding:6,borderRadius:6,fontWeight:600,color:o.status==='Cancelled'?'#dc2626':'#1e293b'}}>
@@ -737,7 +805,7 @@ export default function App() {
                                 </select>
                               </td>
                               <td style={{padding:10}}>
-                                <button onClick={()=>downloadInvoice(o)} style={{padding:'6px 12px',background:'#0284c7',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>📥 প্রিন্ট</button>
+                                <button onClick={()=>downloadInvoice(o)} style={{padding:'6px 12px',background:'#0284c7',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>📥 প্রিন্ট ইনভয়েস</button>
                               </td>
                             </tr>
                           ))}
