@@ -180,7 +180,10 @@ export default function App() {
     });
     
     setBusy(false);
-    if (error) { setNotice('অর্ডার সাবমিট হয়নি: ' + error.message); return; }
+    if (error) { 
+      setNotice('অর্ডার সাবমিট হয়নি: ' + error.message); 
+      return; 
+    }
     
     const newOrderId = data?.order_id;
     if (newOrderId) {
@@ -188,8 +191,10 @@ export default function App() {
       if (!fetchedOrder.error) setLastOrder(fetchedOrder.data);
     }
 
-    setCart([]); setCheckout({ name:'', phone:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
+    setCart([]); 
+    setCheckout({ name:'', phone:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
     await loadAll();
+    setNotice('🎉 আপনার অর্ডারটি সফলভাবে কনফার্ম হয়েছে!');
   }
 
   async function uploadImage(file, path) {
@@ -486,7 +491,7 @@ export default function App() {
               <h2>🛒 শপিং কার্ট ও চেকআউট</h2>
               {lastOrder ? (
                 <div style={{background:'#d1fae5',color:'#065f46',padding:20,borderRadius:12,marginBottom:20,border:'1px solid #34d399'}}>
-                  <h3 style={{margin:'0 0 5px 0'}}>🎉 অর্ডার সফলভাবে গ্রহণ করা হয়েছে!</h3>
+                  <h3 style={{margin:'0 0 5px 0'}}>🎉 ধন্যবাদ! আপনার অর্ডারটি সফলভাবে কনফার্ম হয়েছে!</h3>
                   <p style={{margin:'0 0 15px 0'}}>অর্ডার আইডি: <b>{lastOrder.order_code}</b></p>
                   <button style={btn('#0284c7')} onClick={()=>downloadInvoice(lastOrder)}>📥 অর্ডার ইনভয়েস ডাউনলোড/প্রিন্ট করুন</button>
                 </div>
