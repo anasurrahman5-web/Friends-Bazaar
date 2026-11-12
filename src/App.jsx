@@ -560,7 +560,7 @@ export default function App() {
                   <form onSubmit={placeOrder} style={{display:'flex',flexDirection:'column',gap:15}}>
                     <input style={inputStyle} required placeholder="আপনার পূর্ণ নাম" value={checkout.name} onChange={e=>setCheckout({...checkout,name:e.target.value})}/>
                     
-                    {/* ফোন নম্বর (সর্বোচ্চ ও নির্দিষ্ট ১১ ডিজিট) */}
+                    {/* ফোন নম্বর (১১ ডিজিট নিশ্চিতকরণ) */}
                     <input 
                       style={inputStyle} 
                       required 
@@ -699,6 +699,108 @@ export default function App() {
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* পার্টনার ম্যানেজমেন্ট */}
+                  <div style={panel}>
+                    <h3>👥 পার্টনার ম্যানেজমেন্ট (অ্যাক্সেস প্রদান)</h3>
+                    <form onSubmit={addPartner} style={{display:'flex',gap:10,marginTop:15}}>
+                      <input style={{...inputStyle, flex:1}} type="email" required placeholder="পার্টনারের ইমেইল অ্যাড্রেস দিন" value={newPartnerEmail} onChange={e=>setNewPartnerEmail(e.target.value)}/>
+                      <button style={btn('#059669')}>পার্টনার যুক্ত করুন</button>
+                    </form>
+                    <div style={{marginTop:15,display:'flex',flexWrap:'wrap',gap:10}}>
+                      {partners.map(pt=>(
+                        <div key={pt.id} style={{background:'#f1f5f9',padding:'8px 15px',borderRadius:8,display:'flex',alignItems:'center',gap:10,border:'1px solid #cbd5e1'}}>
+                          <span>{pt.email}</span>
+                          <button onClick={()=>deletePartner(pt.id)} style={{background:'#dc2626',color:'#fff',border:0,borderRadius:4,padding:'2px 8px',cursor:'pointer'}}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ওয়েবসাইট সেটিংস ও ব্র‍্যান্ডিং */}
+                  <div style={panel}>
+                    <h3>🎨 ওয়েবসাইট কাস্টমাইজেশন ও ব্র‍্যান্ডিং</h3>
+                    <form onSubmit={saveSettings} style={{display:'flex',flexDirection:'column',gap:15,marginTop:15}}>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15}}>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>ওয়েবসাইটের নাম</label>
+                          <input style={inputStyle} value={tempSettings.owner.name} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, name:e.target.value}})}/>
+                        </div>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>যোগাযোগ নম্বর</label>
+                          <input style={inputStyle} value={tempSettings.owner.phone} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, phone:e.target.value}})}/>
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>ঠিকানা</label>
+                        <input style={inputStyle} value={tempSettings.owner.address} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, address:e.target.value}})}/>
+                      </div>
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>Friends Bazaar পরিচিতি (Bio / Description)</label>
+                        <textarea style={{...inputStyle,height:70}} value={tempSettings.owner.description} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, description:e.target.value}})}/>
+                      </div>
+
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(250px, 1fr))',gap:15,marginTop:10}}>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>লোগো ইমেজ ফাইল</label>
+                          <input type="file" id="logoInput" accept="image/*" style={inputStyle}/>
+                        </div>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>শপ ব্যানার ইমেজ ফাইল</label>
+                          <input type="file" id="bannerInput" accept="image/*" style={inputStyle}/>
+                        </div>
+                        <div>
+                          <label style={{display:'block',marginBottom:5,fontWeight:600}}>ড্যাশবোর্ড ব্যাকগ্রাউন্ড ইমেজ</label>
+                          <input type="file" id="bgInput" accept="image/*" style={inputStyle}/>
+                        </div>
+                      </div>
+
+                      <button style={{...btn('#0284c7'),marginTop:10}}>সেটিংস ও ব্র‍্যান্ডিং সেভ করুন</button>
+                    </form>
+                  </div>
+
+                  {/* প্রোডাক্ট ম্যানেজমেন্ট (বিবরণ, উপকারিতা, সতর্কতা ও মাল্টি-ইমেজ সহ) */}
+                  <div style={panel}>
+                    <h3>{editing ? '✏️ পণ্য এডিট করুন' : '➕ নতুন পণ্য যোগ করুন'}</h3>
+                    <form onSubmit={saveProduct} style={{display:'flex',flexDirection:'column',gap:12,marginTop:15}}>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:12}}>
+                        <input style={inputStyle} required placeholder="পণ্যের নাম" value={(editing||newProduct).name} onChange={e=>editing?setEditing({...editing,name:e.target.value}):setNewProduct({...newProduct,name:e.target.value})}/>
+                        <input style={inputStyle} required type="number" placeholder="ক্রয়মূল্য (Cost)" value={(editing||newProduct).cost} onChange={e=>editing?setEditing({...editing,cost:e.target.value}):setNewProduct({...newProduct,cost:e.target.value})}/>
+                        <input style={inputStyle} required type="number" placeholder="বিক্রয়মূল্য (Price)" value={(editing||newProduct).price} onChange={e=>editing?setEditing({...editing,price:e.target.value}):setNewProduct({...newProduct,price:e.target.value})}/>
+                        <input style={inputStyle} required type="number" placeholder="স্টক পরিমাণ" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>
+                      </div>
+                      <textarea style={inputStyle} placeholder="পণ্যের বিবরণ" value={(editing||newProduct).description||''} onChange={e=>editing?setEditing({...editing,description:e.target.value}):setNewProduct({...newProduct,description:e.target.value})}/>
+                      <textarea style={inputStyle} placeholder="উপকারিতা" value={(editing||newProduct).benefits||''} onChange={e=>editing?setEditing({...editing,benefits:e.target.value}):setNewProduct({...newProduct,benefits:e.target.value})}/>
+                      <textarea style={inputStyle} placeholder="সতর্কতা / বিশেষ দ্রষ্টব্য" value={(editing||newProduct).drawbacks||''} onChange={e=>editing?setEditing({...editing,drawbacks:e.target.value}):setNewProduct({...newProduct,drawbacks:e.target.value})}/>
+                      
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>একাধিক ছবি আপলোড করুন (Multi-image upload)</label>
+                        <input type="file" accept="image/*" multiple onChange={handleMultipleImagesUpload}/>
+                      </div>
+
+                      <div style={{display:'flex',gap:10}}>
+                        <button style={btn('#059669')}>{editing?'পণ্য আপডেট করুন':'পণ্য যুক্ত করুন'}</button>
+                        {editing && <button type="button" onClick={()=>setEditing(null)} style={btn('#64748b')}>বাতিল</button>}
+                      </div>
+                    </form>
+
+                    <h4 style={{marginTop:30,marginBottom:15}}>বর্তমান প্রোডাক্ট তালিকা</h4>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))',gap:15}}>
+                      {products.map(p=>(
+                        <div key={p.id} style={{background:'#f8fafc',padding:15,borderRadius:12,border:'1px solid #e2e8f0',display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+                          <div>
+                            <img src={p.image_url} alt="" style={{width:'100%',height:120,objectFit:'cover',borderRadius:8,marginBottom:10}}/>
+                            <h4 style={{margin:'0 0 5px 0'}}>{p.name}</h4>
+                            <p style={{margin:0,color:'#059669',fontWeight:700}}>{money(p.price)} (স্টক: {p.stock})</p>
+                          </div>
+                          <div style={{display:'flex',gap:8,marginTop:15}}>
+                            <button onClick={()=>setEditing(p)} style={{...btn('#0284c7'),flex:1,padding:8}}>এডিট</button>
+                            <button onClick={()=>deleteProduct(p.id)} style={{...btn('#dc2626'),flex:1,padding:8}}>ডিলিট</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
