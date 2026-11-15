@@ -754,6 +754,8 @@ export default function App() {
                     </div>
                   </div>
 
+                  {adminRole === 'owner' && (
+                  <>
                   {/* পার্টনার ম্যানেজমেন্ট */}
                   <div style={panel}>
                     <h3>👥 পার্টনার ম্যানেজমেন্ট (অ্যাক্সেস প্রদান)</h3>
@@ -770,6 +772,8 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                  </>
+                  )}
 
                   {/* ওয়েবসাইট সেটিংস ও ব্র‍্যান্ডিং */}
                   <div style={panel}>
