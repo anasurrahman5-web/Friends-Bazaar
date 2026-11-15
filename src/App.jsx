@@ -21,7 +21,9 @@ const btn = (bg='#0f172a') => ({ background:bg, color:'#fff', border:0, padding:
 const panel = { background:'#fff', padding:25, borderRadius:16, border:'1px solid #e2e8f0', marginBottom:25, boxShadow:'0 4px 6px -1px rgba(0,0,0,0.05)' };
 
 export default function App() {
-  const [tab, setTab] = useState('shop');
+  const [tab, setTab] = useState(() => (typeof window !== 'undefined' && window.location.hash === '#admin') ? 'admin' : 'shop');
+  // অ্যাডমিন বাটন শুধু গোপন লিংক (আপনার-সাইট/#admin) দিয়ে ঢুকলে বা লগইন থাকলে দেখা যাবে
+  const [adminLink] = useState(() => typeof window !== 'undefined' && window.location.hash === '#admin');
   const [session, setSession] = useState(null);
   const [adminRole, setAdminRole] = useState('');
   const [email, setEmail] = useState('');
@@ -31,7 +33,7 @@ export default function App() {
   const [partners, setPartners] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [cart, setCart] = useState([]);
-  const [checkout, setCheckout] = useState({ name:'', phone:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
+  const [checkout, setCheckout] = useState({ name:'', phone:'', email:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
   const [lastOrder, setLastOrder] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -174,6 +176,7 @@ export default function App() {
     const { data, error } = await supabase.rpc('create_public_order', {
       p_customer_name: checkout.name.trim(),
       p_phone: checkout.phone.trim(),
+      p_email: checkout.email.trim() || null,
       p_address: checkout.address.trim(),
       p_payment_method: checkout.paymentMethod,
       p_trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId.trim() : 'Cash on Delivery',
@@ -202,7 +205,7 @@ export default function App() {
     }
 
     setCart([]); 
-    setCheckout({ name:'', phone:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
+    setCheckout({ name:'', phone:'', email:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
     await loadAll();
     setNotice('🎉 আপনার অর্ডারটি সফলভাবে কনফার্ম হয়েছে!');
   }
@@ -293,11 +296,31 @@ export default function App() {
 
   async function updateOrderStatus(orderId, status) {
     const { error } = await supabase.from('orders').update({ status }).eq('id', orderId);
-    if (error) setNotice('স্ট্যাটাস আপডেট হয়নি: ' + error.message);
-    else {
-      await loadAll();
-      setNotice(status === 'Cancelled' ? 'অর্ডার বাতিল হয়েছে, পণ্য স্টকে ফেরত গেছে।' : 'অর্ডারের স্ট্যাটাস আপডেট হয়েছে।');
+    if (error) { setNotice('স্ট্যাটাস আপডেট হয়নি: ' + error.message); return; }
+
+    await loadAll();
+    let msg = status === 'Cancelled' ? 'অর্ডার বাতিল হয়েছে, পণ্য স্টকে ফেরত গেছে।' : 'অর্ডারের স্ট্যাটাস আপডেট হয়েছে।';
+
+    // Processing (কনফার্ম) ও Cancelled হলে কাস্টমারকে মেসেজ
+    if (['Processing', 'Cancelled'].includes(status)) {
+      try {
+        const { data, error: fnError } = await supabase.functions.invoke('notify-order', { body: { order_id: orderId } });
+        if (fnError) throw fnError;
+        if (data?.sent?.length) msg += ' কাস্টমারকে মেসেজ পাঠানো হয়েছে (' + data.sent.join(', ') + ')।';
+        else if (data?.errors?.length) msg += ' মেসেজ পাঠানো যায়নি: ' + data.errors.join('; ');
+        else msg += ' (কাস্টমারের ইমেইল না থাকায় বা SMS সেটআপ না থাকায় মেসেজ যায়নি)';
+      } catch (err) {
+        msg += ' মেসেজ পাঠানো যায়নি।';
+      }
     }
+    setNotice(msg);
+  }
+
+  async function deleteOrder(order) {
+    if (!confirm(`অর্ডার ${order.order_code} স্থায়ীভাবে ডিলিট করতে চান? এটা আর ফেরানো যাবে না।`)) return;
+    const { error } = await supabase.rpc('delete_order', { p_order_id: String(order.id) });
+    if (error) setNotice('ডিলিট হয়নি: ' + error.message);
+    else { await loadAll(); setNotice('অর্ডার ডিলিট করা হয়েছে।'); }
   }
 
   async function addPartner(e) {
@@ -423,7 +446,9 @@ export default function App() {
           <div style={{display:'flex',gap:12,alignItems:'center'}}>
             <button style={btn(tab==='shop'?'#38bdf8':'#334155')} onClick={()=>setTab('shop')}>🛍️ শপ</button>
             <button style={btn(tab==='cart'?'#38bdf8':'#334155')} onClick={()=>setTab('cart')}>🛒 কার্ট ({cart.reduce((a,b)=>a+b.qty,0)})</button>
-            <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>setTab('admin')}>⚙️ অ্যাডমিন</button>
+            {(isAdmin || adminLink) && (
+              <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>setTab('admin')}>⚙️ অ্যাডমিন</button>
+            )}
           </div>
         </nav>
 
@@ -599,6 +624,8 @@ export default function App() {
                       }}
                     />
                     
+                    <input style={inputStyle} type="email" placeholder="ইমেইল (ঐচ্ছিক — অর্ডারের আপডেট ইমেইলে পেতে)" value={checkout.email} onChange={e=>setCheckout({...checkout,email:e.target.value})}/>
+
                     <textarea style={{...inputStyle,height:80}} required placeholder="পূর্ণাঙ্গ ঠিকানা (বাসা, রোড, থানা, জেলা)" value={checkout.address} onChange={e=>setCheckout({...checkout,address:e.target.value})}/>
                     
                     {/* বিকাশ সিলেক্ট করলে ট্রানজেকশন আইডি ফিল্ড দেখাবে */}
@@ -843,7 +870,7 @@ export default function App() {
                             <th style={{padding:10}}>পেমেন্ট মাধ্যম</th>
                             <th style={{padding:10}}>মোট টাকা</th>
                             <th style={{padding:10}}>স্ট্যাটাস</th>
-                            <th style={{padding:10}}>ইনভয়েস</th>
+                            <th style={{padding:10}}>ইনভয়েস ও ডিলিট</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -863,7 +890,7 @@ export default function App() {
                                 ))}
                               </td>
                               <td style={{padding:10}}>{o.customer_name}</td>
-                              <td style={{padding:10}}>{o.phone}<br/>{o.address}</td>
+                              <td style={{padding:10}}>{o.phone}<br/>{o.customer_email && <>{o.customer_email}<br/></>}{o.address}</td>
                               <td style={{padding:10}}>
                                 {o.trx_id === 'Cash on Delivery' ? <span style={{color:'#d97706', fontWeight:600}}>COD (নগদ)</span> : <span>বিকাশ<br/><small>Trx: {o.trx_id}</small></span>}
                               </td>
@@ -877,7 +904,10 @@ export default function App() {
                                 </select>
                               </td>
                               <td style={{padding:10}}>
-                                <button onClick={()=>downloadInvoice(o)} style={{padding:'6px 12px',background:'#0284c7',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>📥 প্রিন্ট</button>
+                                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                  <button onClick={()=>downloadInvoice(o)} style={{padding:'6px 12px',background:'#0284c7',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>📥 প্রিন্ট</button>
+                                  <button onClick={()=>deleteOrder(o)} style={{padding:'6px 12px',background:'#dc2626',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>🗑️ ডিলিট</button>
+                                </div>
                               </td>
                             </tr>
                           ))}
