@@ -301,8 +301,8 @@ export default function App() {
     await loadAll();
     let msg = status === 'Cancelled' ? 'অর্ডার বাতিল হয়েছে, পণ্য স্টকে ফেরত গেছে।' : 'অর্ডারের স্ট্যাটাস আপডেট হয়েছে।';
 
-    // Processing (কনফার্ম) ও Cancelled হলে কাস্টমারকে মেসেজ
-    if (['Processing', 'Cancelled'].includes(status)) {
+    // Completed (সম্পন্ন) ও Cancelled (বাতিল) হলে কাস্টমারকে ইমেইলে ইনভয়েস সহ মেসেজ
+    if (['Completed', 'Cancelled'].includes(status)) {
       try {
         const { data, error: fnError } = await supabase.functions.invoke('notify-order', { body: { order_id: orderId } });
         if (fnError) throw fnError;
