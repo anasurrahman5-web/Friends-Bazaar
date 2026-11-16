@@ -21,7 +21,11 @@ const btn = (bg='#0f172a') => ({ background:bg, color:'#fff', border:0, padding:
 const panel = { background:'#fff', padding:25, borderRadius:16, border:'1px solid #e2e8f0', marginBottom:25, boxShadow:'0 4px 6px -1px rgba(0,0,0,0.05)' };
 
 export default function App() {
-  const [tab, setTab] = useState(() => (typeof window !== 'undefined' && window.location.hash === '#admin') ? 'admin' : 'shop');
+  const [tab, setTab] = useState(() => {
+    if (typeof window === 'undefined') return 'shop';
+    const h = window.location.hash.replace('#', '');
+    return ['cart', 'admin', 'account'].includes(h) ? h : 'shop';
+  });
   // অ্যাডমিন বাটন শুধু গোপন লিংক (আপনার-সাইট/#admin) দিয়ে ঢুকলে বা লগইন থাকলে দেখা যাবে
   const [adminLink] = useState(() => typeof window !== 'undefined' && window.location.hash === '#admin');
   const [session, setSession] = useState(null);
@@ -32,7 +36,9 @@ export default function App() {
   const [orders, setOrders] = useState([]);
   const [partners, setPartners] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    try { const s = localStorage.getItem('fb_cart'); return s ? JSON.parse(s) : []; } catch (e) { return []; }
+  });
   const [checkout, setCheckout] = useState({ name:'', phone:'', email:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
   const [lastOrder, setLastOrder] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -47,6 +53,145 @@ export default function App() {
   const [tempSettings, setTempSettings] = useState(DEFAULT_SETTINGS);
 
   const isAdmin = ['admin', 'owner'].includes(adminRole);
+
+  // ---- নতুন: কাস্টমার অ্যাকাউন্ট ও কার্ট ----
+  const [authMode, setAuthMode] = useState('login');
+  const [authForm, setAuthForm] = useState({ name:'', phone:'', email:'', password:'' });
+  const [profileForm, setProfileForm] = useState({ name:'', phone:'', address:'' });
+  const [customerCarts, setCustomerCarts] = useState([]);
+  const [cartSyncedFor, setCartSyncedFor] = useState('');
+
+  // পেজ বদলানো (ব্রাউজারের Back বাটন যেন সাইটের ভেতরেই কাজ করে)
+  function goTab(next) {
+    if (next === tab) return;
+    window.history.pushState({ tab: next }, '', next === 'shop' ? window.location.pathname + window.location.search : '#' + next);
+    setTab(next);
+    window.scrollTo(0, 0);
+  }
+
+  useEffect(() => {
+    const read = () => {
+      const h = window.location.hash.replace('#', '');
+      return ['cart', 'admin', 'account'].includes(h) ? h : 'shop';
+    };
+    window.history.replaceState({ tab: read() }, '');
+    const onPop = () => { setTab(read()); setSelectedProduct(null); setIsZoomed(false); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const slimCart = list => list.map(x => ({ id: x.id, name: x.name, price: x.price, stock: x.stock, image_url: x.image_url, qty: x.qty }));
+
+  // কার্ট ব্রাউজারে সেভ (রিফ্রেশ বা ব্রাউজার বন্ধ করলেও থাকবে)
+  useEffect(() => {
+    try { localStorage.setItem('fb_cart', JSON.stringify(slimCart(cart))); } catch (e) {}
+  }, [cart]);
+
+  // পণ্যের সর্বশেষ দাম ও স্টকের সাথে কার্ট মিলিয়ে নেওয়া
+  useEffect(() => {
+    if (!products.length) return;
+    setCart(old => {
+      const next = old.map(x => {
+        const p = products.find(pp => String(pp.id) === String(x.id));
+        if (!p) return null;
+        const qty = Math.min(Number(x.qty), Number(p.stock));
+        return qty > 0 ? { ...p, qty } : null;
+      }).filter(Boolean);
+      return JSON.stringify(slimCart(next)) === JSON.stringify(slimCart(old)) ? old : next;
+    });
+  }, [products, cart.length]);
+
+  // লগইন করা কাস্টমারের সার্ভারে রাখা কার্ট ফিরিয়ে আনা
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid || isAdmin) { setCartSyncedFor(''); return; }
+    let active = true;
+    (async () => {
+      const { data } = await supabase.from('customer_carts').select('items').eq('user_id', uid).maybeSingle();
+      if (!active) return;
+      const saved = Array.isArray(data?.items) ? data.items : [];
+      if (saved.length) {
+        setCart(old => old.length ? old : saved.map(i => ({ id: i.product_id, name: i.name, price: i.price, stock: 9999, qty: i.qty })));
+      }
+      setCartSyncedFor(uid);
+    })();
+    return () => { active = false; };
+  }, [session?.user?.id, isAdmin]);
+
+  // লগইন করা কাস্টমারের কার্ট সার্ভারে সেভ (অ্যাডমিন দেখতে পারবে)
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid || isAdmin || cartSyncedFor !== uid) return;
+    const timer = setTimeout(async () => {
+      if (!cart.length) { await supabase.from('customer_carts').delete().eq('user_id', uid); return; }
+      const m = session.user.user_metadata || {};
+      await supabase.from('customer_carts').upsert({
+        user_id: uid,
+        email: session.user.email,
+        full_name: m.full_name || '',
+        phone: m.phone || '',
+        items: cart.map(x => ({ product_id: x.id, name: x.name, price: Number(x.price), qty: x.qty })),
+        total: cart.reduce((sum, x) => sum + Number(x.price) * x.qty, 0),
+        updated_at: new Date().toISOString()
+      });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [cart, session, isAdmin, cartSyncedFor]);
+
+  function accountDefaults() {
+    const u = session?.user;
+    const m = u?.user_metadata || {};
+    return { name: m.full_name || '', phone: m.phone || '', email: u?.email || '', address: m.address || '' };
+  }
+
+  // লগইন থাকলে চেকআউট ফর্মে নাম/ফোন/ইমেইল/ঠিকানা আগে থেকে বসানো
+  useEffect(() => {
+    if (!session?.user) return;
+    const d = accountDefaults();
+    setCheckout(c => ({ ...c, name: c.name || d.name, phone: c.phone || d.phone, email: c.email || d.email, address: c.address || d.address }));
+    setProfileForm({ name: d.name, phone: d.phone, address: d.address });
+  }, [session?.user?.id]);
+
+  async function loadCarts() {
+    const { data, error } = await supabase.from('customer_carts').select('*').order('updated_at', { ascending: false });
+    if (!error) setCustomerCarts((data || []).filter(c => Array.isArray(c.items) && c.items.length));
+  }
+  useEffect(() => { if (isAdmin) loadCarts(); }, [isAdmin]);
+
+  async function customerRegister(e) {
+    e.preventDefault();
+    if (authForm.phone.length !== 11) return setNotice('মোবাইল নম্বর অবশ্যই ১১ ডিজিটের হতে হবে।');
+    if (authForm.password.length < 6) return setNotice('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+    setBusy(true);
+    const { data, error } = await supabase.auth.signUp({
+      email: authForm.email.trim(),
+      password: authForm.password,
+      options: { data: { full_name: authForm.name.trim(), phone: authForm.phone.trim() } }
+    });
+    setBusy(false);
+    if (error) return setNotice('অ্যাকাউন্ট খোলা যায়নি: ' + error.message);
+    setAuthForm({ name:'', phone:'', email:'', password:'' });
+    if (data.session) setNotice('🎉 অ্যাকাউন্ট তৈরি হয়েছে, আপনি লগইন অবস্থায় আছেন।');
+    else setNotice('অ্যাকাউন্ট তৈরি হয়েছে। ইমেইলে পাঠানো লিংকে ক্লিক করে ভেরিফাই করে তারপর লগইন করুন।');
+  }
+
+  async function customerLogin(e) {
+    e.preventDefault(); setBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: authForm.email.trim(), password: authForm.password });
+    setBusy(false);
+    if (error) setNotice('লগইন হয়নি: ' + error.message);
+    else { setAuthForm({ name:'', phone:'', email:'', password:'' }); setNotice('লগইন সফল হয়েছে।'); }
+  }
+
+  async function saveProfile(e) {
+    e.preventDefault();
+    if (profileForm.phone && profileForm.phone.length !== 11) return setNotice('মোবাইল নম্বর অবশ্যই ১১ ডিজিটের হতে হবে।');
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ data: { full_name: profileForm.name.trim(), phone: profileForm.phone.trim(), address: profileForm.address.trim() } });
+    setBusy(false);
+    setNotice(error ? 'সেভ হয়নি: ' + error.message : 'আপনার তথ্য সংরক্ষিত হয়েছে।');
+  }
+
 
   useEffect(() => {
     if (!isConfigured) return;
@@ -143,7 +288,7 @@ export default function App() {
 
   async function logout() {
     await supabase.auth.signOut();
-    setOrders([]); setPartners([]); setAdminRole(''); setTab('shop');
+    setOrders([]); setPartners([]); setAdminRole(''); goTab('shop');
   }
 
   function addToCart(p) {
@@ -205,7 +350,7 @@ export default function App() {
     }
 
     setCart([]); 
-    setCheckout({ name:'', phone:'', email:'', address:'', paymentMethod:'Cash on Delivery', trxId:'' });
+    setCheckout({ ...accountDefaults(), paymentMethod:'Cash on Delivery', trxId:'' });
     await loadAll();
     setNotice('🎉 আপনার অর্ডারটি সফলভাবে কনফার্ম হয়েছে!');
   }
@@ -438,16 +583,17 @@ export default function App() {
   return (
     <div style={{fontFamily:"Inter,Arial,sans-serif",background:'#f8fafc',minHeight:'100vh',color:'#1e293b',display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
       <div>
-        <nav style={{background:'#0f172a',color:'#fff',padding:'15px 30px',display:'flex',justifyContent:'space-between',alignItems:'center',boxShadow:'0 2px 10px rgba(0,0,0,0.1)'}}>
-          <div onClick={()=>setTab('shop')} style={{cursor:'pointer',fontSize:24,fontWeight:900,color:'#38bdf8',display:'flex',alignItems:'center',gap:10}}>
+        <nav style={{background:'#0f172a',color:'#fff',padding:'15px 30px',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,boxShadow:'0 2px 10px rgba(0,0,0,0.1)'}}>
+          <div onClick={()=>goTab('shop')} style={{cursor:'pointer',fontSize:24,fontWeight:900,color:'#38bdf8',display:'flex',alignItems:'center',gap:10}}>
             {settings.logo && <img src={settings.logo} alt="Logo" style={{height:35,width:35,borderRadius:'50%',objectFit:'cover'}}/>}
             Friends Bazaar
           </div>
-          <div style={{display:'flex',gap:12,alignItems:'center'}}>
-            <button style={btn(tab==='shop'?'#38bdf8':'#334155')} onClick={()=>setTab('shop')}>🛍️ শপ</button>
-            <button style={btn(tab==='cart'?'#38bdf8':'#334155')} onClick={()=>setTab('cart')}>🛒 কার্ট ({cart.reduce((a,b)=>a+b.qty,0)})</button>
+          <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+            <button style={btn(tab==='shop'?'#38bdf8':'#334155')} onClick={()=>goTab('shop')}>🛍️ শপ</button>
+            <button style={btn(tab==='cart'?'#38bdf8':'#334155')} onClick={()=>goTab('cart')}>🛒 কার্ট ({cart.reduce((a,b)=>a+b.qty,0)})</button>
+            <button style={btn(tab==='account'?'#38bdf8':'#334155')} onClick={()=>goTab('account')}>{session ? '👤 অ্যাকাউন্ট' : '👤 লগইন'}</button>
             {(isAdmin || adminLink) && (
-              <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>setTab('admin')}>⚙️ অ্যাডমিন</button>
+              <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>goTab('admin')}>⚙️ অ্যাডমিন</button>
             )}
           </div>
         </nav>
@@ -478,7 +624,7 @@ export default function App() {
                       </div>
                       <div style={{display:'flex',gap:10,marginTop:20}}>
                         <button style={{...btn('#0284c7'),flex:1}} disabled={p.stock<1} onClick={()=>addToCart(p)}>কার্টে যোগ</button>
-                        <button style={{...btn('#059669'),flex:1}} disabled={p.stock<1} onClick={()=>{addToCart(p);setTab('cart')}}>অর্ডার করুন</button>
+                        <button style={{...btn('#059669'),flex:1}} disabled={p.stock<1} onClick={()=>{addToCart(p);goTab('cart')}}>অর্ডার করুন</button>
                       </div>
                     </div>
                   </div>
@@ -520,7 +666,7 @@ export default function App() {
                       <p style={{margin:0}}><b>সতর্কতা/বিশেষ দ্রষ্টব্য:</b> {selectedProduct.drawbacks || 'তথ্য নেই।'}</p>
                     </div>
 
-                    <button style={{...btn('#059669'),width:'100%',marginTop:20,padding:14,fontSize:16}} disabled={selectedProduct.stock<1} onClick={()=>{addToCart(selectedProduct);setSelectedProduct(null);setTab('cart');}}>
+                    <button style={{...btn('#059669'),width:'100%',marginTop:20,padding:14,fontSize:16}} disabled={selectedProduct.stock<1} onClick={()=>{addToCart(selectedProduct);setSelectedProduct(null);goTab('cart');}}>
                       🛒 এখনই কিনুন (Buy Now)
                     </button>
                   </div>
@@ -550,7 +696,7 @@ export default function App() {
               {!cart.length ? (
                 <div style={{textAlign:'center',padding:'40px 0'}}>
                   <p style={{fontSize:18,color:'#64748b'}}>আপনার কার্ট খালি রয়েছে।</p>
-                  <button style={{...btn('#0284c7'),marginTop:10}} onClick={()=>setTab('shop')}>শপে ফিরে যান</button>
+                  <button style={{...btn('#0284c7'),marginTop:10}} onClick={()=>goTab('shop')}>শপে ফিরে যান</button>
                 </div>
               ) : (
                 <div>
@@ -635,6 +781,74 @@ export default function App() {
 
                     <button style={btn('#e11d48')} disabled={busy}>অর্ডার কনফার্ম করুন</button>
                   </form>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab==='account' && (
+            <div style={{maxWidth:800,margin:'0 auto'}}>
+              {!session ? (
+                <div style={{maxWidth:440,margin:'20px auto',...panel}}>
+                  <div style={{display:'flex',gap:10,marginBottom:20}}>
+                    <button type="button" onClick={()=>setAuthMode('login')} style={{...btn(authMode==='login'?'#0284c7':'#94a3b8'),flex:1}}>লগইন</button>
+                    <button type="button" onClick={()=>setAuthMode('register')} style={{...btn(authMode==='register'?'#0284c7':'#94a3b8'),flex:1}}>নতুন অ্যাকাউন্ট</button>
+                  </div>
+                  {authMode==='login' ? (
+                    <form onSubmit={customerLogin} style={{display:'flex',flexDirection:'column',gap:15}}>
+                      <h2 style={{margin:0}}>👤 কাস্টমার লগইন</h2>
+                      <input style={inputStyle} type="email" required placeholder="ইমেইল অ্যাড্রেস" value={authForm.email} onChange={e=>setAuthForm({...authForm,email:e.target.value})}/>
+                      <input style={inputStyle} type="password" required placeholder="পাসওয়ার্ড" value={authForm.password} onChange={e=>setAuthForm({...authForm,password:e.target.value})}/>
+                      <button style={btn('#059669')} disabled={busy}>লগইন করুন</button>
+                    </form>
+                  ) : (
+                    <form onSubmit={customerRegister} style={{display:'flex',flexDirection:'column',gap:15}}>
+                      <h2 style={{margin:0}}>✨ নতুন অ্যাকাউন্ট খুলুন</h2>
+                      <input style={inputStyle} required placeholder="আপনার পূর্ণ নাম" value={authForm.name} onChange={e=>setAuthForm({...authForm,name:e.target.value})}/>
+                      <input style={inputStyle} required type="tel" maxLength={11} placeholder="মোবাইল নম্বর (১১ ডিজিট)" value={authForm.phone} onChange={e=>{ const v=e.target.value.replace(/\D/g,''); if(v.length<=11) setAuthForm({...authForm,phone:v}); }}/>
+                      <input style={inputStyle} type="email" required placeholder="ইমেইল অ্যাড্রেস" value={authForm.email} onChange={e=>setAuthForm({...authForm,email:e.target.value})}/>
+                      <input style={inputStyle} type="password" required minLength={6} placeholder="পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)" value={authForm.password} onChange={e=>setAuthForm({...authForm,password:e.target.value})}/>
+                      <button style={btn('#059669')} disabled={busy}>অ্যাকাউন্ট খুলুন</button>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div style={panel}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+                      <h2 style={{margin:0}}>👤 আমার অ্যাকাউন্ট</h2>
+                      <button style={btn('#ef4444')} onClick={logout}>লগআউট</button>
+                    </div>
+                    <p style={{color:'#64748b'}}>ইমেইল: <b>{session.user.email}</b></p>
+                    <form onSubmit={saveProfile} style={{display:'flex',flexDirection:'column',gap:12}}>
+                      <input style={inputStyle} placeholder="আপনার নাম" value={profileForm.name} onChange={e=>setProfileForm({...profileForm,name:e.target.value})}/>
+                      <input style={inputStyle} type="tel" maxLength={11} placeholder="মোবাইল নম্বর" value={profileForm.phone} onChange={e=>{ const v=e.target.value.replace(/\D/g,''); if(v.length<=11) setProfileForm({...profileForm,phone:v}); }}/>
+                      <textarea style={{...inputStyle,height:70}} placeholder="ডেলিভারির ঠিকানা (পরের অর্ডারে নিজে থেকে বসবে)" value={profileForm.address} onChange={e=>setProfileForm({...profileForm,address:e.target.value})}/>
+                      <button style={btn('#0284c7')} disabled={busy}>তথ্য সেভ করুন</button>
+                    </form>
+                  </div>
+
+                  <div style={panel}>
+                    <h3 style={{marginTop:0}}>📦 আমার অর্ডারসমূহ</h3>
+                    {orders.filter(o=>o.user_id===session.user.id).length === 0 ? (
+                      <p style={{color:'#64748b'}}>আপনি এখনো কোনো অর্ডার করেননি।</p>
+                    ) : orders.filter(o=>o.user_id===session.user.id).map(o=>(
+                      <div key={o.id} style={{border:'1px solid #e2e8f0',borderRadius:12,padding:15,marginBottom:12,background:o.status==='Cancelled'?'#fef2f2':'#f8fafc'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
+                          <b>{o.order_code}</b>
+                          <span style={{fontWeight:700,color:o.status==='Cancelled'?'#dc2626':o.status==='Completed'?'#059669':'#d97706'}}>{o.status}</span>
+                        </div>
+                        <div style={{fontSize:13,color:'#64748b',margin:'4px 0'}}>{new Date(o.created_at).toLocaleString()}</div>
+                        {(o.order_items||[]).map(item=>(
+                          <div key={item.id} style={{fontSize:14}}>• {item.product_name || item.products?.name || 'পণ্য'} × {item.qty}</div>
+                        ))}
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:10,flexWrap:'wrap',gap:8}}>
+                          <strong style={{color:'#059669'}}>মোট: {money(o.total)}</strong>
+                          <button onClick={()=>downloadInvoice(o)} style={{padding:'6px 12px',background:'#0284c7',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>📥 ইনভয়েস</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -858,6 +1072,31 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  {/* কাস্টমারদের কার্ট (অর্ডার হয়নি) */}
+                  <div style={panel}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+                      <h3 style={{margin:0}}>🛒 কাস্টমারদের কার্ট (এখনো অর্ডার করেনি)</h3>
+                      <button onClick={loadCarts} style={{...btn('#0284c7'),padding:'8px 14px'}}>🔄 রিফ্রেশ</button>
+                    </div>
+                    {customerCarts.length === 0 ? (
+                      <p style={{color:'#64748b'}}>এখন কোনো লগইন করা কাস্টমারের কার্টে পণ্য নেই।</p>
+                    ) : (
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',gap:15,marginTop:15}}>
+                        {customerCarts.map(c=>(
+                          <div key={c.user_id} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:12,padding:15}}>
+                            <b>{c.full_name || 'নাম দেয়নি'}</b>
+                            <div style={{fontSize:13,color:'#64748b',marginBottom:8}}>{c.phone}{c.phone && c.email ? ' • ' : ''}{c.email}</div>
+                            {(c.items||[]).map((it,idx)=>(
+                              <div key={idx} style={{fontSize:14}}>• {it.name} × {it.qty}</div>
+                            ))}
+                            <div style={{marginTop:8,fontWeight:700,color:'#059669'}}>মোট: {money(c.total)}</div>
+                            <small style={{color:'#64748b'}}>সর্বশেষ আপডেট: {new Date(c.updated_at).toLocaleString()}</small>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* অর্ডার লিস্ট ও ইনভয়েস ম্যানেজমেন্ট */}
