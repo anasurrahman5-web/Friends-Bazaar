@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+[11/18/2026 10:32 PM] Al Habibi: import React, { useEffect, useMemo, useState } from 'react';
 import { supabase, isConfigured } from './lib/supabase';
 
 const DEFAULT_SETTINGS = {
   owner: {
-    name: 'Md. Anasur Rahman',
+    name: 'Md. Anisur Rahman',
     email: 'anasurrahman5@gmail.com',
     phone: '01722023943',
     address: 'আশুগঞ্জ, ব্রাহ্মণবাড়িয়া, বাংলাদেশ',
@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS = {
   dashboardBg: 'https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=1200&q=80'
 };
 
-const money = n => `৳ ${Number(n || 0).toLocaleString('en-BD')}`;
+const money = n => ৳ ${Number(n || 0).toLocaleString('en-BD')};
 const inputStyle = { padding: 12, borderRadius: 10, border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box', fontSize: '15px' };
 const btn = (bg='#0f172a') => ({ background:bg, color:'#fff', border:0, padding:'12px 18px', borderRadius:10, cursor:'pointer', fontWeight:700 });
 const panel = { background:'#fff', padding:25, borderRadius:16, border:'1px solid #e2e8f0', marginBottom:25, boxShadow:'0 4px 6px -1px rgba(0,0,0,0.05)' };
@@ -47,8 +47,16 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
-  const [newProduct, setNewProduct] = useState({ name: '', cost: '', price: '', stock: '', description: '', benefits: '', drawbacks: '', image_url: '', images: [] });
+  
+  // নতুন: সাইজ বা ভ্যারিয়েন্ট সিলেকশন স্টেট
+  const [selectedVariant, setSelectedVariant] = useState(null);
+
+  const [newProduct, setNewProduct] = useState({ name: '', cost: '', price: '', stock: '', description: '', benefits: '', drawbacks: '', image_url: '', images: [], variants: [] });
   const [editing, setEditing] = useState(null);
+  
+  // নতুন: ভ্যারিয়েন্ট ইনপুট স্টেট
+  const [newVariantInput, setNewVariantInput] = useState({ name: '', price: '', stock: '' });
+
   const [newPartnerEmail, setNewPartnerEmail] = useState('');
   const [tempSettings, setTempSettings] = useState(DEFAULT_SETTINGS);
 
@@ -68,8 +76,7 @@ export default function App() {
     setTab(next);
     window.scrollTo(0, 0);
   }
-
-  useEffect(() => {
+[11/18/2026 10:32 PM] Al Habibi: useEffect(() => {
     const read = () => {
       const h = window.location.hash.replace('#', '');
       return ['cart', 'admin', 'account'].includes(h) ? h : 'shop';
@@ -80,7 +87,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  const slimCart = list => list.map(x => ({ id: x.id, name: x.name, price: x.price, stock: x.stock, image_url: x.image_url, qty: x.qty }));
+  const slimCart = list => list.map(x => ({ id: x.id, name: x.name, price: x.price, stock: x.stock, image_url: x.image_url, qty: x.qty, variant: x.variant }));
 
   // কার্ট ব্রাউজারে সেভ (রিফ্রেশ বা ব্রাউজার বন্ধ করলেও থাকবে)
   useEffect(() => {
@@ -94,8 +101,13 @@ export default function App() {
       const next = old.map(x => {
         const p = products.find(pp => String(pp.id) === String(x.id));
         if (!p) return null;
-        const qty = Math.min(Number(x.qty), Number(p.stock));
-        return qty > 0 ? { ...p, qty } : null;
+        let availableStock = p.stock;
+        if (x.variant && p.variants?.length) {
+          const vObj = p.variants.find(v => v.name === x.variant);
+          if (vObj) availableStock = vObj.stock;
+        }
+        const qty = Math.min(Number(x.qty), Number(availableStock));
+        return qty > 0 ? { ...p, price: x.price, qty } : null;
       }).filter(Boolean);
       return JSON.stringify(slimCart(next)) === JSON.stringify(slimCart(old)) ? old : next;
     });
@@ -111,7 +123,7 @@ export default function App() {
       if (!active) return;
       const saved = Array.isArray(data?.items) ? data.items : [];
       if (saved.length) {
-        setCart(old => old.length ? old : saved.map(i => ({ id: i.product_id, name: i.name, price: i.price, stock: 9999, qty: i.qty })));
+        setCart(old => old.length ? old : saved.map(i => ({ id: i.product_id, name: i.name, price: i.price, stock: 9999, qty: i.qty, variant: i.variant })));
       }
       setCartSyncedFor(uid);
     })();
@@ -121,7 +133,7 @@ export default function App() {
   // লগইন করা কাস্টমারের কার্ট সার্ভারে সেভ (অ্যাডমিন দেখতে পারবে)
   useEffect(() => {
     const uid = session?.user?.id;
-    if (!uid || isAdmin || cartSyncedFor !== uid) return;
+    if (!uid  isAdmin  cartSyncedFor !== uid) return;
     const timer = setTimeout(async () => {
       if (!cart.length) { await supabase.from('customer_carts').delete().eq('user_id', uid); return; }
       const m = session.user.user_metadata || {};
@@ -130,7 +142,7 @@ export default function App() {
         email: session.user.email,
         full_name: m.full_name || '',
         phone: m.phone || '',
-        items: cart.map(x => ({ product_id: x.id, name: x.name, price: Number(x.price), qty: x.qty })),
+        items: cart.map(x => ({ product_id: x.id, name: x.name, price: Number(x.price), qty: x.qty, variant: x.variant || '' })),
         total: cart.reduce((sum, x) => sum + Number(x.price) * x.qty, 0),
         updated_at: new Date().toISOString()
       });
@@ -141,18 +153,17 @@ export default function App() {
   function accountDefaults() {
     const u = session?.user;
     const m = u?.user_metadata || {};
-    return { name: m.full_name || '', phone: m.phone || '', email: u?.email || '', address: m.address || '' };
+    return { name: m.full_name  '', phone: m.phone  '', email: u?.email  '', address: m.address  '' };
   }
 
   // লগইন থাকলে চেকআউট ফর্মে নাম/ফোন/ইমেইল/ঠিকানা আগে থেকে বসানো
   useEffect(() => {
     if (!session?.user) return;
     const d = accountDefaults();
-    setCheckout(c => ({ ...c, name: c.name || d.name, phone: c.phone || d.phone, email: c.email || d.email, address: c.address || d.address }));
+    setCheckout(c => ({ ...c, name: c.name  d.name, phone: c.phone  d.phone, email: c.email  d.email, address: c.address  d.address }));
     setProfileForm({ name: d.name, phone: d.phone, address: d.address });
   }, [session?.user?.id]);
-
-  async function loadCarts() {
+[11/18/2026 10:32 PM] Al Habibi: async function loadCarts() {
     const { data, error } = await supabase.from('customer_carts').select('*').order('updated_at', { ascending: false });
     if (!error) setCustomerCarts((data || []).filter(c => Array.isArray(c.items) && c.items.length));
   }
@@ -239,8 +250,7 @@ export default function App() {
   }, [session]);
 
   useEffect(() => { loadAll(); }, [session]);
-
-  const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
+[11/18/2026 10:32 PM] Al Habibi: const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
   
   const validOrders = useMemo(() => orders.filter(o => o.status !== 'Cancelled'), [orders]);
   const revenue = validOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
@@ -291,15 +301,37 @@ export default function App() {
     setOrders([]); setPartners([]); setAdminRole(''); goTab('shop');
   }
 
-  function addToCart(p) {
-    if (p.stock < 1) return setNotice('দুঃখিত, পণ্যটি বর্তমানে স্টকে নেই।');
-    const found = cart.find(x => x.id === p.id);
-    if (found && found.qty >= p.stock) return setNotice('স্টকের অতিরিক্ত পণ্য কার্টে যোগ করা যাবে না।');
-    setCart(old => found ? old.map(x => x.id === p.id ? {...x, qty:x.qty+1} : x) : [...old, {...p, qty:1}]);
+  function addToCart(p, customVariant = null) {
+    let priceToUse = p.price;
+    let variantName = '';
+    let stockToCheck = p.stock;
+
+    if (p.variants && p.variants.length > 0) {
+      const v = customVariant  selectedVariant  p.variants[0];
+      priceToUse = Number(v.price);
+      variantName = v.name;
+      stockToCheck = Number(v.stock);
+    }
+
+    if (stockToCheck < 1) return setNotice('দুঃখিত, এই সাইজ বা পণ্যটি বর্তমানে স্টকে নেই।');
+    
+    const found = cart.find(x => x.id === p.id && x.variant === variantName);
+    if (found && found.qty >= stockToCheck) return setNotice('স্টকের অতিরিক্ত পণ্য কার্টে যোগ করা যাবে না।');
+    
+    const newItem = { 
+      ...p, 
+      price: priceToUse, 
+      variant: variantName, 
+      stock: stockToCheck, 
+      qty: 1 
+    };
+
+    setCart(old => found ? old.map(x => (x.id === p.id && x.variant === variantName) ? {...x, qty: x.qty + 1} : x) : [...old, newItem]);
+    setNotice(কার্টে যোগ করা হয়েছে: ${p.name} ${variantName ? '('+variantName+')' : ''});
   }
 
-  function changeQty(id, delta) {
-    setCart(old => old.map(x => x.id === id ? {...x, qty:Math.max(0, Math.min(Number(x.stock), x.qty+delta))} : x).filter(x => x.qty > 0));
+  function changeQty(id, variant, delta) {
+    setCart(old => old.map(x => (x.id === id && x.variant === variant) ? {...x, qty: Math.max(0, Math.min(Number(x.stock), x.qty + delta))} : x).filter(x => x.qty > 0));
   }
 
   async function placeOrder(e) {
@@ -315,15 +347,19 @@ export default function App() {
     }
 
     setBusy(true);
-    // আইডি সবসময় টেক্সট হিসেবে পাঠানো হচ্ছে (bigint/uuid সমস্যা এড়াতে)
-    const items = cart.map(x => ({ product_id: String(x.id), qty: x.qty }));
+    const items = cart.map(x => ({ 
+      product_id: String(x.id), 
+      qty: x.qty, 
+      price: x.price,
+      variant: x.variant || '' 
+    }));
     
     const { data, error } = await supabase.rpc('create_public_order', {
       p_customer_name: checkout.name.trim(),
       p_phone: checkout.phone.trim(),
       p_email: checkout.email.trim() || null,
       p_address: checkout.address.trim(),
-      p_payment_method: checkout.paymentMethod,
+[11/18/2026 10:32 PM] Al Habibi: p_payment_method: checkout.paymentMethod,
       p_trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId.trim() : 'Cash on Delivery',
       p_items: items
     });
@@ -334,7 +370,6 @@ export default function App() {
       return; 
     }
     
-    // লগইন ছাড়া কাস্টমার অর্ডার ডেটা পড়তে পারে না, তাই ফাংশনের রিটার্ন ডেটা থেকেই ইনভয়েস তৈরি
     if (data?.order_id) {
       setLastOrder({
         order_code: data.order_code,
@@ -345,7 +380,7 @@ export default function App() {
         trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId : 'Cash on Delivery',
         status: 'Pending',
         total: data.total,
-        order_items: (data.items || []).map(i => ({ qty: i.qty, price: i.price, products: { name: i.name } }))
+        order_items: (data.items || []).map(i => ({ qty: i.qty, price: i.price, variant: i.variant, products: { name: i.name } }))
       });
     }
 
@@ -358,7 +393,7 @@ export default function App() {
   async function uploadImage(file, path) {
     if (!file) return '';
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-    const key = `${path}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const key = ${path}/${Date.now()}-${crypto.randomUUID()}.${ext};
     const { error } = await supabase.storage.from('site-assets').upload(key, file);
     if (error) throw error;
     return supabase.storage.from('site-assets').getPublicUrl(key).data.publicUrl;
@@ -383,6 +418,49 @@ export default function App() {
     setBusy(false);
   }
 
+  // ১. ছবি ডিলিট করার ফাংশন
+  function removeImage(indexToRemove) {
+    const target = editing || newProduct;
+    const nextImages = target.images.filter((_, idx) => idx !== indexToRemove);
+    const nextCover = nextImages[0] || '';
+    if (editing) setEditing({ ...editing, images: nextImages, image_url: nextCover });
+    else setNewProduct({ ...newProduct, images: nextImages, image_url: nextCover });
+  }
+
+  // ১. ছবির পজিশন বদলানোর ফাংশন (তীর চিহ্ন দিয়ে মুভ)
+  function moveImage(fromIndex, direction) {
+    const target = editing || newProduct;
+    const imgs = [...(target.images || [])];
+    const toIndex = direction === 'left' ? fromIndex - 1 : fromIndex + 1;
+    if (toIndex < 0 || toIndex >= imgs.length) return;
+    const temp = imgs[fromIndex];
+    imgs[fromIndex] = imgs[toIndex];
+    imgs[toIndex] = temp;
+    const nextCover = imgs[0] || '';
+    if (editing) setEditing({ ...editing, images: imgs, image_url: nextCover });
+    else setNewProduct({ ...newProduct, images: imgs, image_url: nextCover });
+  }
+
+  // ৩. ভ্যারিয়েন্ট বা সাইজ অ্যাড করা
+  function addVariant() {
+    if (!newVariantInput.name || !newVariantInput.price) return setNotice('ভ্যারিয়েন্টের নাম ও দাম দিন।');
+    const target = editing || newProduct;
+    const nextVariants = [...(target.variants || []), { 
+      name: newVariantInput.name.trim(), 
+      price: Number(newVariantInput.price), 
+      stock: Number(newVariantInput.stock || 0) 
+    }];
+    if (editing) setEditing({ ...editing, variants: nextVariants });
+    else setNewProduct({ ...newProduct, variants: nextVariants });
+    setNewVariantInput({ name: '', price: '', stock: '' });
+  }
+[11/18/2026 10:32 PM] Al Habibi: function removeVariant(index) {
+    const target = editing || newProduct;
+    const nextVariants = target.variants.filter((_, idx) => idx !== index);
+    if (editing) setEditing({ ...editing, variants: nextVariants });
+    else setNewProduct({ ...newProduct, variants: nextVariants });
+  }
+
   async function saveProduct(e) {
     e.preventDefault(); setBusy(true);
     try {
@@ -390,19 +468,20 @@ export default function App() {
       const allImages = source.images?.length ? source.images : (source.image_url ? [source.image_url] : []);
       const row = { 
         name: source.name.trim(), 
-        cost: Number(source.cost), 
-        price: Number(source.price), 
-        stock: Number(source.stock), 
+        cost: Number(source.cost || 0), 
+        price: Number(source.price || 0), 
+        stock: Number(source.stock || 0), 
         description: source.description || '',
         benefits: source.benefits || '',
         drawbacks: source.drawbacks || '',
         image_url: allImages[0] || null, 
-        images: allImages 
+        images: allImages,
+        variants: source.variants || []
       };
       const result = editing ? await supabase.from('products').update(row).eq('id', editing.id) : await supabase.from('products').insert(row);
       if (result.error) throw result.error;
       setEditing(null); 
-      setNewProduct({name:'', cost:'', price:'', stock:'', description:'', benefits:'', drawbacks:'', image_url:'', images:[]});
+      setNewProduct({name:'', cost:'', price:'', stock:'', description:'', benefits:'', drawbacks:'', image_url:'', images:[], variants:[]});
       await loadAll(); 
       setNotice('পণ্য সফলভাবে সংরক্ষিত হয়েছে।');
     } catch(err) { setNotice(err.message); }
@@ -446,23 +525,18 @@ export default function App() {
     await loadAll();
     let msg = status === 'Cancelled' ? 'অর্ডার বাতিল হয়েছে, পণ্য স্টকে ফেরত গেছে।' : 'অর্ডারের স্ট্যাটাস আপডেট হয়েছে।';
 
-    // Completed (সম্পন্ন) ও Cancelled (বাতিল) হলে কাস্টমারকে ইমেইলে ইনভয়েস সহ মেসেজ
     if (['Completed', 'Cancelled'].includes(status)) {
       try {
         const { data, error: fnError } = await supabase.functions.invoke('notify-order', { body: { order_id: orderId } });
         if (fnError) throw fnError;
         if (data?.sent?.length) msg += ' কাস্টমারকে মেসেজ পাঠানো হয়েছে (' + data.sent.join(', ') + ')।';
-        else if (data?.errors?.length) msg += ' মেসেজ পাঠানো যায়নি: ' + data.errors.join('; ');
-        else msg += ' (কাস্টমারের ইমেইল না থাকায় বা SMS সেটআপ না থাকায় মেসেজ যায়নি)';
-      } catch (err) {
-        msg += ' মেসেজ পাঠানো যায়নি।';
-      }
+      } catch (err) {}
     }
     setNotice(msg);
   }
 
   async function deleteOrder(order) {
-    if (!confirm(`অর্ডার ${order.order_code} স্থায়ীভাবে ডিলিট করতে চান? এটা আর ফেরানো যাবে না।`)) return;
+    if (!confirm(অর্ডার ${order.order_code} স্থায়ীভাবে ডিলিট করতে চান? এটা আর ফেরানো যাবে না।)) return;
     const { error } = await supabase.rpc('delete_order', { p_order_id: String(order.id) });
     if (error) setNotice('ডিলিট হয়নি: ' + error.message);
     else { await loadAll(); setNotice('অর্ডার ডিলিট করা হয়েছে।'); }
@@ -473,7 +547,7 @@ export default function App() {
     if (!newPartnerEmail.trim()) return;
     setBusy(true);
     const { error } = await supabase.from('partners').insert({ name: 'Partner', email: newPartnerEmail.trim() });
-    setBusy(false);
+[11/18/2026 10:32 PM] Al Habibi: setBusy(false);
     if (error) {
       setNotice('পার্টনার যোগ করা যায়নি: ' + error.message);
     } else {
@@ -499,7 +573,7 @@ export default function App() {
 
   function downloadInvoice(order) {
     const printWindow = window.open('', '_blank');
-    const htmlContent = `
+    const htmlContent = 
       <!DOCTYPE html>
       <html lang="bn">
       <head>
@@ -520,7 +594,7 @@ export default function App() {
           <div class="header">
             <div>
               <div style="display:flex; align-items:center; gap:12px;">
-                ${settings.logo ? `<img src="${settings.logo}" alt="Logo" style="height:50px; width:50px; border-radius:50%; object-fit:cover;" />` : ''}
+                ${settings.logo ? <img src="${settings.logo}" alt="Logo" style="height:50px; width:50px; border-radius:50%; object-fit:cover;" /> : ''}
                 <h2 style="margin:0; color:#0f172a;">Friends Bazaar</h2>
               </div>
               <p style="margin:8px 0 0 0; font-size:13px; color:#64748b;">${settings.owner.address} | ফোন: ${settings.owner.phone}</p>
@@ -537,28 +611,28 @@ export default function App() {
             <p style="margin:4px 0;"><b>ফোন নম্বর:</b> ${order.phone}</p>
             <p style="margin:4px 0;"><b>ঠিকানা:</b> ${order.address}</p>
             <p style="margin:4px 0;"><b>পেমেন্ট মাধ্যম:</b> ${order.trx_id === 'Cash on Delivery' ? 'ক্যাশ অন ডেলিভারি' : 'বিকাশ'}</p>
-            ${order.trx_id !== 'Cash on Delivery' ? `<p style="margin:4px 0;"><b>বিকাশ TrxID:</b> ${order.trx_id}</p>` : ''}
+            ${order.trx_id !== 'Cash on Delivery' ? <p style="margin:4px 0;"><b>বিকাশ TrxID:</b> ${order.trx_id}</p>` : ''}
             <p style="margin:4px 0;"><b>অর্ডার স্ট্যাটাস:</b> <span style="color:${order.status==='Cancelled'?'#dc2626':'#059669'}">${order.status}</span></p>
           </div>
 
           <table class="table">
             <thead>
               <tr>
-                <th>পণ্যের নাম</th>
+                <th>পণ্যের নাম ও সাইজ</th>
                 <th>পরিমাণ</th>
                 <th>মূল্য</th>
                 <th>মোট</th>
-              </tr>
+[11/18/2026 10:32 PM] Al Habibi: </tr>
             </thead>
             <tbody>
-              ${order.order_items.map(item => `
+              ${order.order_items.map(item => 
                 <tr>
-                  <td>${item.product_name || item.products?.name || 'পণ্য'}</td>
+                  <td>${item.product_name || item.products?.name || 'পণ্য'} ${item.variant ? '('+item.variant+')' : ''}</td>
                   <td>${item.qty} টি</td>
                   <td>৳ ${Number(item.price).toLocaleString('en-BD')}</td>
                   <td>৳ ${(item.price * item.qty).toLocaleString('en-BD')}</td>
                 </tr>
-              `).join('')}
+              ).join('')}
             </tbody>
           </table>
 
@@ -575,7 +649,7 @@ export default function App() {
         </script>
       </body>
       </html>
-    `;
+    ;
     printWindow.document.write(htmlContent);
     printWindow.document.close();
   }
@@ -603,7 +677,7 @@ export default function App() {
         <main style={{maxWidth:1200,margin:'30px auto',padding:'0 20px'}}>
           {tab==='shop' && (
             <div>
-              <section style={{backgroundImage:`linear-gradient(#0f172acc,#1e293bcc),url("${settings.banner}")`,backgroundSize:'cover',backgroundPosition:'center',padding:'80px 20px',borderRadius:20,textAlign:'center',color:'#fff',marginBottom:40,boxShadow:'0 10px 25px rgba(0,0,0,0.1)'}}>
+              <section style={{backgroundImage:linear-gradient(#0f172acc,#1e293bcc),url("${settings.banner}")`,backgroundSize:'cover',backgroundPosition:'center',padding:'80px 20px',borderRadius:20,textAlign:'center',color:'#fff',marginBottom:40,boxShadow:'0 10px 25px rgba(0,0,0,0.1)'}}>
                 <h1 style={{fontSize:42,color:'#38bdf8',marginBottom:15}}>স্বাগতম Friends Bazaar-এ</h1>
                 <p style={{fontSize:18,maxWidth:700,margin:'0 auto',lineHeight:1.6}}>{settings.owner.description}</p>
               </section>
@@ -611,20 +685,33 @@ export default function App() {
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',gap:25}}>
                 {products.map(p=>(
                   <div key={p.id} style={{background:'#fff',borderRadius:16,overflow:'hidden',boxShadow:'0 4px 20px rgba(0,0,0,0.04)',display:'flex',flexDirection:'column',border:'1px solid #e2e8f0',transition:'transform 0.2s'}}>
-                    <div onClick={()=>{ setSelectedProduct(p); setActiveImageIndex(0); }} style={{cursor:'pointer',height:220,background:'#f1f5f9',position:'relative'}}>
+                    <div onClick={()=>{
+[11/18/2026 10:32 PM] Al Habibi: setSelectedProduct(p); 
+                      setActiveImageIndex(0); 
+                      setSelectedVariant(p.variants && p.variants.length > 0 ? p.variants[0] : null);
+                    }} style={{cursor:'pointer',height:220,background:'#f1f5f9',position:'relative'}}>
                       <img src={p.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80'} alt={p.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
                       <span style={{position:'absolute',top:12,right:12,background:p.stock>0?'#059669':'#dc2626',color:'#fff',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700}}>
-                        {p.stock>0 ? `স্টক: ${p.stock}` : 'স্টক আউট'}
+                        {p.stock>0 ? স্টক: ${p.stock} : 'স্টক আউট'}
                       </span>
                     </div>
                     <div style={{padding:20,flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
                       <div>
-                        <h3 onClick={()=>{ setSelectedProduct(p); setActiveImageIndex(0); }} style={{cursor:'pointer',fontSize:18,marginBottom:8,color:'#0f172a'}}>{p.name}</h3>
-                        <strong style={{color:'#059669',fontSize:22}}>{money(p.price)}</strong>
+                        <h3 onClick={()=>{ 
+                          setSelectedProduct(p); 
+                          setActiveImageIndex(0); 
+                          setSelectedVariant(p.variants && p.variants.length > 0 ? p.variants[0] : null);
+                        }} style={{cursor:'pointer',fontSize:18,marginBottom:8,color:'#0f172a'}}>{p.name}</h3>
+                        <strong style={{color:'#059669',fontSize:22}}>
+                          {p.variants && p.variants.length > 0 ? শুরুতে ${money(p.variants[0].price)} : money(p.price)}
+                        </strong>
                       </div>
                       <div style={{display:'flex',gap:10,marginTop:20}}>
-                        <button style={{...btn('#0284c7'),flex:1}} disabled={p.stock<1} onClick={()=>addToCart(p)}>কার্টে যোগ</button>
-                        <button style={{...btn('#059669'),flex:1}} disabled={p.stock<1} onClick={()=>{addToCart(p);goTab('cart')}}>অর্ডার করুন</button>
+                        <button style={{...btn('#0284c7'),flex:1}} onClick={()=>{
+                          setSelectedProduct(p); 
+                          setActiveImageIndex(0); 
+                          setSelectedVariant(p.variants && p.variants.length > 0 ? p.variants[0] : null);
+                        }}>বিস্তারিত ও সাইজ</button>
                       </div>
                     </div>
                   </div>
@@ -636,10 +723,42 @@ export default function App() {
                   <div style={{background:'#fff',padding:30,borderRadius:20,maxWidth:750,width:'100%',maxHeight:'90vh',overflowY:'auto',position:'relative'}}>
                     <button onClick={()=>setSelectedProduct(null)} style={{position:'absolute',top:15,right:15,background:'#ef4444',color:'#fff',border:0,borderRadius:'50%',width:32,height:32,cursor:'pointer',fontWeight:700}}>✕</button>
                     <h2 style={{fontSize:24,marginBottom:5}}>{selectedProduct.name}</h2>
-                    <strong style={{color:'#059669',fontSize:26}}>{money(selectedProduct.price)}</strong>
-                    <p style={{fontSize:14,color:selectedProduct.stock>0?'#059669':'#dc2626',fontWeight:600,marginTop:5}}>
-                      {selectedProduct.stock>0 ? `উপলব্ধ স্টক: ${selectedProduct.stock} টি` : 'পণ্যটি স্টকে নেই'}
+                    
+                    {/* ডাইনামিক প্রাইস শো */}
+                    <strong style={{color:'#059669',fontSize:26}}>
+                      {selectedVariant ? money(selectedVariant.price) : money(selectedProduct.price)}
+                    </strong>
+                    
+                    <p style={{fontSize:14,color: (selectedVariant ? selectedVariant.stock : selectedProduct.stock) > 0 ? '#059669' : '#dc2626',fontWeight:600,marginTop:5}}>
+                      {(selectedVariant ? selectedVariant.stock : selectedProduct.stock) > 0 ? উপলব্ধ স্টক: ${selectedVariant ? selectedVariant.stock : selectedProduct.stock} টি : 'এই সাইজটি স্টকে নেই'}
                     </p>
+
+                    {/* ৩. সাইজ বা ভ্যারিয়েন্ট সিলেকশন বাটন */}
+                    {selectedProduct.variants && selectedProduct.variants.length > 0 && (
+                      <div style={{marginTop:15,background:'#f1f5f9',padding:15,borderRadius:12}}>
+                        <label style={{display:'block',marginBottom:8,fontWeight:700,color:'#0f172a'}}>📏 সাইজ / ওজন সিলেক্ট করুন:</label>
+[11/18/2026 10:32 PM] Al Habibi: <div style={{display:'flex',flexWrap:'wrap',gap:10}}>
+                          {selectedProduct.variants.map((v, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setSelectedVariant(v)}
+                              style={{
+                                padding:'8px 16px',
+                                borderRadius:8,
+                                border: selectedVariant?.name === v.name ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                                background: selectedVariant?.name === v.name ? '#e0f2fe' : '#fff',
+                                color: selectedVariant?.name === v.name ? '#0369a1' : '#1e293b',
+                                fontWeight:700,
+                                cursor:'pointer'
+                              }}
+                            >
+                              {v.name} ({money(v.price)})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div style={{textAlign:'center',margin:'20px 0',position:'relative'}}>
                       <img 
@@ -660,13 +779,31 @@ export default function App() {
                       )}
                     </div>
 
-                    <div style={{display:'flex',flexDirection:'column',gap:12,background:'#f8fafc',padding:15,borderRadius:12,marginTop:15}}>
-                      <p style={{margin:0}}><b>পণ্যের বিবরণ:</b> {selectedProduct.description || 'বিবরণ দেওয়া হয়নি।'}</p>
-                      <p style={{margin:0}}><b>উপকারিতা:</b> {selectedProduct.benefits || 'তথ্য নেই।'}</p>
-                      <p style={{margin:0}}><b>সতর্কতা/বিশেষ দ্রষ্টব্য:</b> {selectedProduct.drawbacks || 'তথ্য নেই।'}</p>
+                    {/* ২. আই-ক্যাচি ডেসক্রিপশন রেন্ডারিং (white-space pre-line সহ) */}
+                    <div style={{display:'flex',flexDirection:'column',gap:12,background:'#f8fafc',padding:15,borderRadius:12,marginTop:15,lineHeight:1.6}}>
+                      <div>
+                        <b style={{color:'#0f172a',display:'block',marginBottom:4}}>পণ্যের বিবরণ:</b>
+                        <div style={{whiteSpace:'pre-line',color:'#334155'}}>{selectedProduct.description || 'বিবরণ দেওয়া হয়নি।'}</div>
+                      </div>
+                      {selectedProduct.benefits && (
+                        <div>
+                          <b style={{color:'#059669',display:'block',marginBottom:4}}>উপকারিতা:</b>
+                          <div style={{whiteSpace:'pre-line',color:'#334155'}}>{selectedProduct.benefits}</div>
+                        </div>
+                      )}
+                      {selectedProduct.drawbacks && (
+                        <div>
+                          <b style={{color:'#d97706',display:'block',marginBottom:4}}>সতর্কতা / বিশেষ দ্রষ্টব্য:</b>
+                          <div style={{whiteSpace:'pre-line',color:'#334155'}}>{selectedProduct.drawbacks}</div>
+                        </div>
+                      )}
                     </div>
 
-                    <button style={{...btn('#059669'),width:'100%',marginTop:20,padding:14,fontSize:16}} disabled={selectedProduct.stock<1} onClick={()=>{addToCart(selectedProduct);setSelectedProduct(null);goTab('cart');}}>
+                    <button style={{...btn('#059669'),width:'100%',marginTop:20,padding:14,fontSize:16}} disabled={(selectedVariant ? selectedVariant.stock : selectedProduct.stock) < 1} onClick={()=>{
+[11/18/2026 10:32 PM] Al Habibi: addToCart(selectedProduct, selectedVariant);
+                      setSelectedProduct(null);
+                      goTab('cart');
+                    }}>
                       🛒 এখনই কিনুন (Buy Now)
                     </button>
                   </div>
@@ -701,18 +838,18 @@ export default function App() {
               ) : (
                 <div>
                   <div style={{marginBottom:20}}>
-                    {cart.map(x=>(
-                      <div key={x.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 0',borderBottom:'1px solid #e2e8f0'}}>
+                    {cart.map((x, idx)=>(
+                      <div key={idx} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 0',borderBottom:'1px solid #e2e8f0'}}>
                         <div>
-                          <h4 style={{margin:0}}>{x.name}</h4>
+                          <h4 style={{margin:0}}>{x.name} {x.variant ? (${x.variant}) : ''}</h4>
                           <span style={{fontSize:14,color:'#64748b'}}>{money(x.price)} × {x.qty}</span>
                         </div>
                         <div style={{display:'flex',alignItems:'center',gap:12}}>
                           <strong>{money(x.price * x.qty)}</strong>
                           <div style={{display:'flex',gap:5,alignItems:'center'}}>
-                            <button onClick={()=>changeQty(x.id,-1)} style={{padding:'4px 10px',background:'#cbd5e1',border:0,borderRadius:6,cursor:'pointer',fontWeight:700}}>-</button>
+                            <button onClick={()=>changeQty(x.id, x.variant, -1)} style={{padding:'4px 10px',background:'#cbd5e1',border:0,borderRadius:6,cursor:'pointer',fontWeight:700}}>-</button>
                             <span>{x.qty}</span>
-                            <button onClick={()=>changeQty(x.id,1)} style={{padding:'4px 10px',background:'#cbd5e1',border:0,borderRadius:6,cursor:'pointer',fontWeight:700}}>+</button>
+                            <button onClick={()=>changeQty(x.id, x.variant, 1)} style={{padding:'4px 10px',background:'#cbd5e1',border:0,borderRadius:6,cursor:'pointer',fontWeight:700}}>+</button>
                           </div>
                         </div>
                       </div>
@@ -726,7 +863,7 @@ export default function App() {
                   {/* পেমেন্ট পদ্ধতি সিলেকশন */}
                   <div style={{background:'#f1f5f9',padding:20,borderRadius:12,marginBottom:20}}>
                     <h4 style={{margin:'0 0 10px 0',color:'#0f172a'}}>পেমেন্ট মাধ্যম সিলেক্ট করুন:</h4>
-                    <div style={{display:'flex',gap:20,marginBottom:15}}>
+[11/18/2026 10:32 PM] Al Habibi: <div style={{display:'flex',gap:20,marginBottom:15}}>
                       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontWeight:600}}>
                         <input 
                           type="radio" 
@@ -792,7 +929,7 @@ export default function App() {
                 <div style={{maxWidth:440,margin:'20px auto',...panel}}>
                   <div style={{display:'flex',gap:10,marginBottom:20}}>
                     <button type="button" onClick={()=>setAuthMode('login')} style={{...btn(authMode==='login'?'#0284c7':'#94a3b8'),flex:1}}>লগইন</button>
-                    <button type="button" onClick={()=>setAuthMode('register')} style={{...btn(authMode==='register'?'#0284c7':'#94a3b8'),flex:1}}>নতুন অ্যাকাউন্ট</button>
+[11/18/2026 10:32 PM] Al Habibi: <button type="button" onClick={()=>setAuthMode('register')} style={{...btn(authMode==='register'?'#0284c7':'#94a3b8'),flex:1}}>নতুন অ্যাকাউন্ট</button>
                   </div>
                   {authMode==='login' ? (
                     <form onSubmit={customerLogin} style={{display:'flex',flexDirection:'column',gap:15}}>
@@ -833,14 +970,14 @@ export default function App() {
                     {orders.filter(o=>o.user_id===session.user.id).length === 0 ? (
                       <p style={{color:'#64748b'}}>আপনি এখনো কোনো অর্ডার করেননি।</p>
                     ) : orders.filter(o=>o.user_id===session.user.id).map(o=>(
-                      <div key={o.id} style={{border:'1px solid #e2e8f0',borderRadius:12,padding:15,marginBottom:12,background:o.status==='Cancelled'?'#fef2f2':'#f8fafc'}}>
+[11/18/2026 10:32 PM] Al Habibi: <div key={o.id} style={{border:'1px solid #e2e8f0',borderRadius:12,padding:15,marginBottom:12,background:o.status==='Cancelled'?'#fef2f2':'#f8fafc'}}>
                         <div style={{display:'flex',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
                           <b>{o.order_code}</b>
                           <span style={{fontWeight:700,color:o.status==='Cancelled'?'#dc2626':o.status==='Completed'?'#059669':'#d97706'}}>{o.status}</span>
                         </div>
                         <div style={{fontSize:13,color:'#64748b',margin:'4px 0'}}>{new Date(o.created_at).toLocaleString()}</div>
                         {(o.order_items||[]).map(item=>(
-                          <div key={item.id} style={{fontSize:14}}>• {item.product_name || item.products?.name || 'পণ্য'} × {item.qty}</div>
+                          <div key={item.id} style={{fontSize:14}}>• {item.product_name  item.products?.name  'পণ্য'} {item.variant ? '('+item.variant+')' : ''} × {item.qty}</div>
                         ))}
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:10,flexWrap:'wrap',gap:8}}>
                           <strong style={{color:'#059669'}}>মোট: {money(o.total)}</strong>
@@ -866,7 +1003,7 @@ export default function App() {
                   </form>
                 </div>
               ) : (
-                <div style={{backgroundImage:`linear-gradient(#f8fafcee,#f8fafcee),url("${settings.dashboardBg}")`,backgroundSize:'cover',padding:20,borderRadius:20}}>
+                <div style={{backgroundImage:linear-gradient(#f8fafcee,#f8fafcee),url("${settings.dashboardBg}"),backgroundSize:'cover',padding:20,borderRadius:20}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:25}}>
                     <h2>⚙️ বিজনেস অ্যানালিটিক্স ও অ্যাডমিন প্যানেল</h2>
                     <button style={btn('#ef4444')} onClick={logout}>লগআউট</button>
@@ -887,8 +1024,7 @@ export default function App() {
                       <h3 style={{margin:0,fontSize:26}}>{money(totalProfit)}</h3>
                     </div>
                   </div>
-
-                  {/* প্রফিট অ্যানালিটিক্স */}
+[11/18/2026 10:32 PM] Al Habibi: {/* প্রফিট অ্যানালিটিক্স */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:20,marginBottom:30}}>
                     <div style={{background:'#fff',padding:20,borderRadius:12,borderLeft:'5px solid #10b981',boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
                       <p style={{margin:'0 0 5px 0',color:'#64748b',fontWeight:600}}>আজকের প্রফিট (Daily)</p>
@@ -919,7 +1055,7 @@ export default function App() {
                             <span style={{fontWeight:700}}>{money(analytics.dailyP)}</span>
                           </div>
                           <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
-                            <div style={{background:'#10b981',width:`${Math.min(100, (analytics.dailyP / 5000) * 100)}%`,height:'100%'}}></div>
+                            <div style={{background:'#10b981',width:${Math.min(100, (analytics.dailyP / 5000) * 100)}%,height:'100%'}}></div>
                           </div>
                         </div>
                         <div>
@@ -928,16 +1064,16 @@ export default function App() {
                             <span style={{fontWeight:700}}>{money(analytics.weeklyP)}</span>
                           </div>
                           <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
-                            <div style={{background:'#3b82f6',width:`${Math.min(100, (analytics.weeklyP / 30000) * 100)}%`,height:'100%'}}></div>
+                            <div style={{background:'#3b82f6',width:${Math.min(100, (analytics.weeklyP / 30000) * 100)}%,height:'100%'}}></div>
                           </div>
                         </div>
                         <div>
                           <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
                             <span>মাসিক গ্রোথ (Monthly Growth)</span>
                             <span style={{fontWeight:700}}>{money(analytics.monthlyP)}</span>
-                          </div>
+[11/18/2026 10:32 PM] Al Habibi: </div>
                           <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
-                            <div style={{background:'#8b5cf6',width:`${Math.min(100, (analytics.monthlyP / 120000) * 100)}%`,height:'100%'}}></div>
+                            <div style={{background:'#8b5cf6',width:${Math.min(100, (analytics.monthlyP / 120000) * 100)}%,height:'100%'}}></div>
                           </div>
                         </div>
                       </div>
@@ -952,7 +1088,7 @@ export default function App() {
                             <span style={{fontWeight:700, color:'#059669'}}>{money(analytics.monthlyS)}</span>
                           </div>
                           <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
-                            <div style={{background:'#059669',width:`${Math.min(100, (analytics.monthlyS / 250000) * 100)}%`,height:'100%'}}></div>
+                            <div style={{background:'#059669',width:${Math.min(100, (analytics.monthlyS / 250000) * 100)}%,height:'100%'}}></div>
                           </div>
                         </div>
                         <div>
@@ -961,7 +1097,7 @@ export default function App() {
                             <span style={{fontWeight:700, color:'#0284c7'}}>{money(analytics.yearlyS)}</span>
                           </div>
                           <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
-                            <div style={{background:'#0284c7',width:`${Math.min(100, (analytics.yearlyS / 3000000) * 100)}%`,height:'100%'}}></div>
+                            <div style={{background:'#0284c7',width:${Math.min(100, (analytics.yearlyS / 3000000) * 100)}%,height:'100%'}}></div>
                           </div>
                         </div>
                       </div>
@@ -994,7 +1130,7 @@ export default function App() {
                     <h3>🎨 ওয়েবসাইট কাস্টমাইজেশন ও ব্র‍্যান্ডিং</h3>
                     <form onSubmit={saveSettings} style={{display:'flex',flexDirection:'column',gap:15,marginTop:15}}>
                       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15}}>
-                        <div>
+[11/18/2026 10:32 PM] Al Habibi: <div>
                           <label style={{display:'block',marginBottom:5,fontWeight:600}}>ওয়েবসাইটের নাম</label>
                           <input style={inputStyle} value={tempSettings.owner.name} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, name:e.target.value}})}/>
                         </div>
@@ -1031,7 +1167,7 @@ export default function App() {
                     </form>
                   </div>
 
-                  {/* প্রোডাক্ট ম্যানেজমেন্ট (বিবরণ, উপকারিতা, সতর্কতা ও মাল্টি-ইমেজ সহ) */}
+                  {/* প্রোডাক্ট ম্যানেজমেন্ট (ছবি ডিলিট, পজিশন বদলানো, ভ্যারিয়েন্ট ও আই-ক্যাচি ডেসক্রিপশন সহ) */}
                   <div style={panel}>
                     <h3>{editing ? '✏️ পণ্য এডিট করুন' : '➕ নতুন পণ্য যোগ করুন'}</h3>
                     <form onSubmit={saveProduct} style={{display:'flex',flexDirection:'column',gap:12,marginTop:15}}>
@@ -1039,18 +1175,56 @@ export default function App() {
                         <input style={inputStyle} required placeholder="পণ্যের নাম" value={(editing||newProduct).name} onChange={e=>editing?setEditing({...editing,name:e.target.value}):setNewProduct({...newProduct,name:e.target.value})}/>
                         <input style={inputStyle} required type="number" placeholder="ক্রয়মূল্য (Cost)" value={(editing||newProduct).cost} onChange={e=>editing?setEditing({...editing,cost:e.target.value}):setNewProduct({...newProduct,cost:e.target.value})}/>
                         <input style={inputStyle} required type="number" placeholder="বিক্রয়মূল্য (Price)" value={(editing||newProduct).price} onChange={e=>editing?setEditing({...editing,price:e.target.value}):setNewProduct({...newProduct,price:e.target.value})}/>
-                        <input style={inputStyle} required type="number" placeholder="স্টক পরিমাণ" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>
+[11/18/2026 10:32 PM] Al Habibi: <input style={inputStyle} required type="number" placeholder="স্টক পরিমাণ" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>
                       </div>
-                      <textarea style={inputStyle} placeholder="পণ্যের বিবরণ" value={(editing||newProduct).description||''} onChange={e=>editing?setEditing({...editing,description:e.target.value}):setNewProduct({...newProduct,description:e.target.value})}/>
-                      <textarea style={inputStyle} placeholder="উপকারিতা" value={(editing||newProduct).benefits||''} onChange={e=>editing?setEditing({...editing,benefits:e.target.value}):setNewProduct({...newProduct,benefits:e.target.value})}/>
-                      <textarea style={inputStyle} placeholder="সতর্কতা / বিশেষ দ্রষ্টব্য" value={(editing||newProduct).drawbacks||''} onChange={e=>editing?setEditing({...editing,drawbacks:e.target.value}):setNewProduct({...newProduct,drawbacks:e.target.value})}/>
                       
-                      <div>
-                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>একাধিক ছবি আপলোড করুন (Multi-image upload)</label>
-                        <input type="file" accept="image/*" multiple onChange={handleMultipleImagesUpload}/>
+                      <textarea style={{...inputStyle, height:90}} placeholder="পণ্যের বিবরণ (লাইন বাই লাইন বা পয়েন্ট আকারে লিখুন)" value={(editingnewProduct).description''} onChange={e=>editing?setEditing({...editing,description:e.target.value}):setNewProduct({...newProduct,description:e.target.value})}/>
+                      <textarea style={{...inputStyle, height:70}} placeholder="উপকারিতা" value={(editingnewProduct).benefits''} onChange={e=>editing?setEditing({...editing,benefits:e.target.value}):setNewProduct({...newProduct,benefits:e.target.value})}/>
+                      <textarea style={{...inputStyle, height:70}} placeholder="সতর্কতা / বিশেষ দ্রষ্টব্য" value={(editingnewProduct).drawbacks''} onChange={e=>editing?setEditing({...editing,drawbacks:e.target.value}):setNewProduct({...newProduct,drawbacks:e.target.value})}/>
+                      
+                      {/* ৩. সাইজ বা ওজন ভ্যারিয়েন্ট সেকশন (যেমন: ২০ গ্রাম, ৩০ গ্রাম ইত্যাদি) */}
+                      <div style={{background:'#f1f5f9',padding:15,borderRadius:12}}>
+                        <label style={{display:'block',marginBottom:8,fontWeight:700}}>⚖️ সাইজ / ওজন ভ্যারিয়েন্ট যুক্ত করুন (যেমন: ২০ গ্রাম, ৫০ গ্রাম ইত্যাদি):</label>
+                        <div style={{display:'flex',gap:10,marginBottom:10,flexWrap:'wrap'}}>
+                          <input style={{...inputStyle, flex:2}} placeholder="নাম (যেমন: ২০ গ্রাম)" value={newVariantInput.name} onChange={e=>setNewVariantInput({...newVariantInput, name:e.target.value})}/>
+                          <input style={{...inputStyle, flex:1}} type="number" placeholder="দাম (৳)" value={newVariantInput.price} onChange={e=>newVariantInput({...newVariantInput, price:e.target.value})}/>
+                          <input style={{...inputStyle, flex:1}} type="number" placeholder="স্টক" value={newVariantInput.stock} onChange={e=>newVariantInput({...newVariantInput, stock:e.target.value})} />
+                          <button type="button" onClick={addVariant} style={btn('#0284c7')}>ভ্যারিয়েন্ট যোগ করুন</button>
+                        </div>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                          {((editing  newProduct).variants  []).map((v, idx)=>(
+                            <div key={idx} style={{background:'#fff',border:'1px solid #cbd5e1',padding:'6px 12px',borderRadius:8,display:'flex',alignItems:'center',gap:8}}>
+                              <span><b>{v.name}</b> - {money(v.price)} (স্টক: {v.stock})</span>
+                              <button type="button" onClick={()=>removeVariant(idx)} style={{background:'#dc2626',color:'#fff',border:0,borderRadius:4,padding:'2px 6px',cursor:'pointer'}}>✕</button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
 
-                      <div style={{display:'flex',gap:10}}>
+                      {/* ১. মাল্টি-ইমেজ আপলোড ও ম্যানেজমেন্ট (ক্রস ও তীর চিহ্ন দিয়ে পজিশন বদলানোর অপশন সহ) */}
+                      <div>
+                        <label style={{display:'block',marginBottom:5,fontWeight:600}}>📸 ছবি ম্যানেজমেন্ট (ক্রস দিয়ে ডিলিট ও তীর দিয়ে পজিশন বদলান)</label>
+                        <input type="file" accept="image/*" multiple onChange={handleMultipleImagesUpload}/>
+                        
+                        <div style={{display:'flex',gap:12,marginTop:12,overflowX:'auto',paddingBottom:5}}>
+                          {((editing  newProduct).images  []).map((imgUrl, imgIdx)=>(
+                            <div key={imgIdx} style={{position:'relative',border:imgIdx===0?'3px solid #059669':'1px solid #cbd5e1',borderRadius:10,padding:4,background:'#fff',minWidth:90,textAlign:'center'}}>
+[11/18/2026 10:32 PM] Al Habibi: <img src={imgUrl} alt="" style={{width:80,height:80,objectFit:'cover',borderRadius:8}}/>
+                              <div style={{fontSize:11,fontWeight:700,color:imgIdx===0?'#059669':'#64748b'}}>{imgIdx===0 ? '★ কভার ইমেজ' : ${imgIdx+1} নম্বর}</div>
+                              
+                              <button type="button" onClick={()=>removeImage(imgIdx)} style={{position:'absolute',top:0,right:0,background:'#dc2626',color:'#fff',border:0,borderRadius:'50%',width:22,height:22,cursor:'pointer',fontSize:12,fontWeight:700}} title="ডিলিট করুন">✕</button>
+                              
+                              <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
+                                <button type="button" disabled={imgIdx===0} onClick={()=>moveImage(imgIdx, 'left')} style={{fontSize:11,padding:'2px 4px',cursor:imgIdx===0?'not-allowed':'pointer'}}>◀</button>
+                                <button type="button" disabled={imgIdx===((editing  newProduct).images.length-1)} onClick={()=>moveImage(imgIdx, 'right')} style={{fontSize:11,padding:'2px 4px',cursor:imgIdx===((editing  newProduct).images.length-1)?'not-allowed':'pointer'}}>▶</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <small style={{color:'#64748b'}}>* ১ নম্বর ছবিটি (সবুজ বর্ডারযুক্ত) প্রডাক্টের মেইন কভার ইমেজ হিসেবে দেখাবে।</small>
+                      </div>
+
+                      <div style={{display:'flex',gap:10,marginTop:10}}>
                         <button style={btn('#059669')}>{editing?'পণ্য আপডেট করুন':'পণ্য যুক্ত করুন'}</button>
                         {editing && <button type="button" onClick={()=>setEditing(null)} style={btn('#64748b')}>বাতিল</button>}
                       </div>
@@ -1064,6 +1238,7 @@ export default function App() {
                             <img src={p.image_url} alt="" style={{width:'100%',height:120,objectFit:'cover',borderRadius:8,marginBottom:10}}/>
                             <h4 style={{margin:'0 0 5px 0'}}>{p.name}</h4>
                             <p style={{margin:0,color:'#059669',fontWeight:700}}>{money(p.price)} (স্টক: {p.stock})</p>
+                            {p.variants?.length > 0 && <small style={{color:'#0284c7'}}>ভ্যারিয়েন্ট আছে: {p.variants.length}টি</small>}
                           </div>
                           <div style={{display:'flex',gap:8,marginTop:15}}>
                             <button onClick={()=>setEditing(p)} style={{...btn('#0284c7'),flex:1,padding:8}}>এডিট</button>
@@ -1079,7 +1254,7 @@ export default function App() {
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
                       <h3 style={{margin:0}}>🛒 কাস্টমারদের কার্ট (এখনো অর্ডার করেনি)</h3>
                       <button onClick={loadCarts} style={{...btn('#0284c7'),padding:'8px 14px'}}>🔄 রিফ্রেশ</button>
-                    </div>
+[11/18/2026 10:32 PM] Al Habibi: </div>
                     {customerCarts.length === 0 ? (
                       <p style={{color:'#64748b'}}>এখন কোনো লগইন করা কাস্টমারের কার্টে পণ্য নেই।</p>
                     ) : (
@@ -1089,7 +1264,7 @@ export default function App() {
                             <b>{c.full_name || 'নাম দেয়নি'}</b>
                             <div style={{fontSize:13,color:'#64748b',marginBottom:8}}>{c.phone}{c.phone && c.email ? ' • ' : ''}{c.email}</div>
                             {(c.items||[]).map((it,idx)=>(
-                              <div key={idx} style={{fontSize:14}}>• {it.name} × {it.qty}</div>
+                              <div key={idx} style={{fontSize:14}}>• {it.name} {it.variant ? '('+it.variant+')' : ''} × {it.qty}</div>
                             ))}
                             <div style={{marginTop:8,fontWeight:700,color:'#059669'}}>মোট: {money(c.total)}</div>
                             <small style={{color:'#64748b'}}>সর্বশেষ আপডেট: {new Date(c.updated_at).toLocaleString()}</small>
@@ -1107,7 +1282,7 @@ export default function App() {
                         <thead>
                           <tr style={{background:'#f1f5f9',textAlign:'left'}}>
                             <th style={{padding:10}}>অর্ডার কোড</th>
-                            <th style={{padding:10}}>পণ্য ও পরিমাণ</th>
+                            <th style={{padding:10}}>পণ্য ও সাইজ</th>
                             <th style={{padding:10}}>গ্রাহক</th>
                             <th style={{padding:10}}>ঠিকানা ও ফোন</th>
                             <th style={{padding:10}}>পেমেন্ট মাধ্যম</th>
@@ -1119,60 +1294,17 @@ export default function App() {
                         <tbody>
                           {orders.map(o=>(
                             <tr key={o.id} style={{borderBottom:'1px solid #e2e8f0', background: o.status==='Cancelled' ? '#fef2f2' : 'transparent'}}>
-                              <td style={{padding:10,fontWeight:700}}>{o.order_code}</td>
-                              <td style={{padding:10,minWidth:230}}>
-                                {(o.order_items||[]).map(item=>(
-                                  <div key={item.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:6}}>
-                                    <span style={{fontWeight:600}}>{item.product_name || item.products?.name || 'পণ্য'}</span>
-                                    <span style={{display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>
-                                      <button disabled={o.status==='Cancelled'} onClick={()=>changeOrderItemQty(item,-1)} style={{padding:'2px 9px',background:'#cbd5e1',border:0,borderRadius:6,cursor:'pointer',fontWeight:700}}>-</button>
-                                      <b>{item.qty} পিস</b>
-                                      <button disabled={o.status==='Cancelled'} onClick={()=>changeOrderItemQty(item,1)} style={{padding:'2px 9px',background:'#cbd5e1',border:0,borderRadius:6,cursor:'pointer',fontWeight:700}}>+</button>
-                                    </span>
-                                  </div>
+                              <td style={{padding:10}}><b>{o.order_code}</b></td>
+                              <td style={{padding:10}}>
+                                {(o.order_items||[]).map((it,idx)=>(
+                                  <div key={idx}>• {it.product_name || it.products?.name} {it.variant ? '('+it.variant+')' : ''} × {it.qty}</div>
                                 ))}
                               </td>
                               <td style={{padding:10}}>{o.customer_name}</td>
-                              <td style={{padding:10}}>{o.phone}<br/>{o.customer_email && <>{o.customer_email}<br/></>}{o.address}</td>
-                              <td style={{padding:10}}>
-                                {o.trx_id === 'Cash on Delivery' ? <span style={{color:'#d97706', fontWeight:600}}>COD (নগদ)</span> : <span>বিকাশ<br/><small>Trx: {o.trx_id}</small></span>}
-                              </td>
+                              <td style={{padding:10}}>{o.address}<br/><small>{o.phone}</small></td>
+                              <td style={{padding:10}}>{o.trx_id === 'Cash on Delivery' ? 'Cash on Delivery' : bKash (${o.trx_id})}</td>
                               <td style={{padding:10,fontWeight:700,color:'#059669'}}>{money(o.total)}</td>
                               <td style={{padding:10}}>
-                                <select value={o.status} onChange={e=>updateOrderStatus(o.id, e.target.value)} style={{padding:6,borderRadius:6,fontWeight:600,color:o.status==='Cancelled'?'#dc2626':'#1e293b'}}>
+                                <select value={o.status} onChange={e=>updateOrderStatus(o.id, e.target.value)} style={{padding:6,borderRadius:6,border:'1px solid #cbd5e1'}}>
                                   <option value="Pending">Pending</option>
                                   <option value="Processing">Processing</option>
-                                  <option value="Completed">Completed</option>
-                                  <option value="Cancelled">Cancelled (বাতিল)</option>
-                                </select>
-                              </td>
-                              <td style={{padding:10}}>
-                                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                                  <button onClick={()=>downloadInvoice(o)} style={{padding:'6px 12px',background:'#0284c7',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>📥 প্রিন্ট</button>
-                                  <button onClick={()=>deleteOrder(o)} style={{padding:'6px 12px',background:'#dc2626',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>🗑️ ডিলিট</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </main>
-      </div>
-
-      <footer style={{background:'#0f172a',color:'#cbd5e1',padding:40,textAlign:'center',marginTop:60}}>
-        <div style={{maxWidth:800,margin:'0 auto'}}>
-          <h3 style={{color:'#38bdf8',marginBottom:10}}>Friends Bazaar</h3>
-          <p style={{lineHeight:1.6,marginBottom:15}}>{settings.owner.description}</p>
-          <p style={{margin:5}}>📍 {settings.owner.address} | 📞 ফোন: {settings.owner.phone} | ✉️ {settings.owner.email}</p>
-          <small style={{display:'block',marginTop:20,color:'#64748b'}}>© 2026 Friends Bazaar. All rights reserved.</small>
-        </div>
-      </footer>
-    </div>
-  );
-}
