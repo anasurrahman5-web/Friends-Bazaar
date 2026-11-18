@@ -1,4 +1,4 @@
-[11/18/2026 10:32 PM] Al Habibi: import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { supabase, isConfigured } from './lib/supabase';
 
 const DEFAULT_SETTINGS = {
@@ -76,7 +76,7 @@ export default function App() {
     setTab(next);
     window.scrollTo(0, 0);
   }
-[11/18/2026 10:32 PM] Al Habibi: useEffect(() => {
+useEffect(() => {
     const read = () => {
       const h = window.location.hash.replace('#', '');
       return ['cart', 'admin', 'account'].includes(h) ? h : 'shop';
@@ -163,7 +163,7 @@ export default function App() {
     setCheckout(c => ({ ...c, name: c.name  d.name, phone: c.phone  d.phone, email: c.email  d.email, address: c.address  d.address }));
     setProfileForm({ name: d.name, phone: d.phone, address: d.address });
   }, [session?.user?.id]);
-[11/18/2026 10:32 PM] Al Habibi: async function loadCarts() {
+async function loadCarts() {
     const { data, error } = await supabase.from('customer_carts').select('*').order('updated_at', { ascending: false });
     if (!error) setCustomerCarts((data || []).filter(c => Array.isArray(c.items) && c.items.length));
   }
@@ -250,7 +250,7 @@ export default function App() {
   }, [session]);
 
   useEffect(() => { loadAll(); }, [session]);
-[11/18/2026 10:32 PM] Al Habibi: const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
+const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
   
   const validOrders = useMemo(() => orders.filter(o => o.status !== 'Cancelled'), [orders]);
   const revenue = validOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
@@ -359,7 +359,7 @@ export default function App() {
       p_phone: checkout.phone.trim(),
       p_email: checkout.email.trim() || null,
       p_address: checkout.address.trim(),
-[11/18/2026 10:32 PM] Al Habibi: p_payment_method: checkout.paymentMethod,
+p_payment_method: checkout.paymentMethod,
       p_trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId.trim() : 'Cash on Delivery',
       p_items: items
     });
@@ -454,7 +454,7 @@ export default function App() {
     else setNewProduct({ ...newProduct, variants: nextVariants });
     setNewVariantInput({ name: '', price: '', stock: '' });
   }
-[11/18/2026 10:32 PM] Al Habibi: function removeVariant(index) {
+function removeVariant(index) {
     const target = editing || newProduct;
     const nextVariants = target.variants.filter((_, idx) => idx !== index);
     if (editing) setEditing({ ...editing, variants: nextVariants });
@@ -547,7 +547,7 @@ export default function App() {
     if (!newPartnerEmail.trim()) return;
     setBusy(true);
     const { error } = await supabase.from('partners').insert({ name: 'Partner', email: newPartnerEmail.trim() });
-[11/18/2026 10:32 PM] Al Habibi: setBusy(false);
+setBusy(false);
     if (error) {
       setNotice('পার্টনার যোগ করা যায়নি: ' + error.message);
     } else {
@@ -686,7 +686,7 @@ export default function App() {
                 {products.map(p=>(
                   <div key={p.id} style={{background:'#fff',borderRadius:16,overflow:'hidden',boxShadow:'0 4px 20px rgba(0,0,0,0.04)',display:'flex',flexDirection:'column',border:'1px solid #e2e8f0',transition:'transform 0.2s'}}>
                     <div onClick={()=>{
-[11/18/2026 10:32 PM] Al Habibi: setSelectedProduct(p); 
+setSelectedProduct(p); 
                       setActiveImageIndex(0); 
                       setSelectedVariant(p.variants && p.variants.length > 0 ? p.variants[0] : null);
                     }} style={{cursor:'pointer',height:220,background:'#f1f5f9',position:'relative'}}>
@@ -737,7 +737,7 @@ export default function App() {
                     {selectedProduct.variants && selectedProduct.variants.length > 0 && (
                       <div style={{marginTop:15,background:'#f1f5f9',padding:15,borderRadius:12}}>
                         <label style={{display:'block',marginBottom:8,fontWeight:700,color:'#0f172a'}}>📏 সাইজ / ওজন সিলেক্ট করুন:</label>
-[11/18/2026 10:32 PM] Al Habibi: <div style={{display:'flex',flexWrap:'wrap',gap:10}}>
+<div style={{display:'flex',flexWrap:'wrap',gap:10}}>
                           {selectedProduct.variants.map((v, i) => (
                             <button
                               key={i}
@@ -800,7 +800,7 @@ export default function App() {
                     </div>
 
                     <button style={{...btn('#059669'),width:'100%',marginTop:20,padding:14,fontSize:16}} disabled={(selectedVariant ? selectedVariant.stock : selectedProduct.stock) < 1} onClick={()=>{
-[11/18/2026 10:32 PM] Al Habibi: addToCart(selectedProduct, selectedVariant);
+addToCart(selectedProduct, selectedVariant);
                       setSelectedProduct(null);
                       goTab('cart');
                     }}>
@@ -863,7 +863,7 @@ export default function App() {
                   {/* পেমেন্ট পদ্ধতি সিলেকশন */}
                   <div style={{background:'#f1f5f9',padding:20,borderRadius:12,marginBottom:20}}>
                     <h4 style={{margin:'0 0 10px 0',color:'#0f172a'}}>পেমেন্ট মাধ্যম সিলেক্ট করুন:</h4>
-[11/18/2026 10:32 PM] Al Habibi: <div style={{display:'flex',gap:20,marginBottom:15}}>
+<div style={{display:'flex',gap:20,marginBottom:15}}>
                       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontWeight:600}}>
                         <input 
                           type="radio" 
@@ -929,7 +929,7 @@ export default function App() {
                 <div style={{maxWidth:440,margin:'20px auto',...panel}}>
                   <div style={{display:'flex',gap:10,marginBottom:20}}>
                     <button type="button" onClick={()=>setAuthMode('login')} style={{...btn(authMode==='login'?'#0284c7':'#94a3b8'),flex:1}}>লগইন</button>
-[11/18/2026 10:32 PM] Al Habibi: <button type="button" onClick={()=>setAuthMode('register')} style={{...btn(authMode==='register'?'#0284c7':'#94a3b8'),flex:1}}>নতুন অ্যাকাউন্ট</button>
+<button type="button" onClick={()=>setAuthMode('register')} style={{...btn(authMode==='register'?'#0284c7':'#94a3b8'),flex:1}}>নতুন অ্যাকাউন্ট</button>
                   </div>
                   {authMode==='login' ? (
                     <form onSubmit={customerLogin} style={{display:'flex',flexDirection:'column',gap:15}}>
@@ -970,7 +970,7 @@ export default function App() {
                     {orders.filter(o=>o.user_id===session.user.id).length === 0 ? (
                       <p style={{color:'#64748b'}}>আপনি এখনো কোনো অর্ডার করেননি।</p>
                     ) : orders.filter(o=>o.user_id===session.user.id).map(o=>(
-[11/18/2026 10:32 PM] Al Habibi: <div key={o.id} style={{border:'1px solid #e2e8f0',borderRadius:12,padding:15,marginBottom:12,background:o.status==='Cancelled'?'#fef2f2':'#f8fafc'}}>
+<div key={o.id} style={{border:'1px solid #e2e8f0',borderRadius:12,padding:15,marginBottom:12,background:o.status==='Cancelled'?'#fef2f2':'#f8fafc'}}>
                         <div style={{display:'flex',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
                           <b>{o.order_code}</b>
                           <span style={{fontWeight:700,color:o.status==='Cancelled'?'#dc2626':o.status==='Completed'?'#059669':'#d97706'}}>{o.status}</span>
@@ -1024,7 +1024,7 @@ export default function App() {
                       <h3 style={{margin:0,fontSize:26}}>{money(totalProfit)}</h3>
                     </div>
                   </div>
-[11/18/2026 10:32 PM] Al Habibi: {/* প্রফিট অ্যানালিটিক্স */}
+{/* প্রফিট অ্যানালিটিক্স */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:20,marginBottom:30}}>
                     <div style={{background:'#fff',padding:20,borderRadius:12,borderLeft:'5px solid #10b981',boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
                       <p style={{margin:'0 0 5px 0',color:'#64748b',fontWeight:600}}>আজকের প্রফিট (Daily)</p>
@@ -1071,7 +1071,7 @@ export default function App() {
                           <div style={{display:'flex',justifyContent:'space-between',fontSize:14,marginBottom:4}}>
                             <span>মাসিক গ্রোথ (Monthly Growth)</span>
                             <span style={{fontWeight:700}}>{money(analytics.monthlyP)}</span>
-[11/18/2026 10:32 PM] Al Habibi: </div>
+</div>
                           <div style={{background:'#e2e8f0',height:12,borderRadius:6,overflow:'hidden'}}>
                             <div style={{background:'#8b5cf6',width:${Math.min(100, (analytics.monthlyP / 120000) * 100)}%,height:'100%'}}></div>
                           </div>
@@ -1130,7 +1130,7 @@ export default function App() {
                     <h3>🎨 ওয়েবসাইট কাস্টমাইজেশন ও ব্র‍্যান্ডিং</h3>
                     <form onSubmit={saveSettings} style={{display:'flex',flexDirection:'column',gap:15,marginTop:15}}>
                       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15}}>
-[11/18/2026 10:32 PM] Al Habibi: <div>
+<div>
                           <label style={{display:'block',marginBottom:5,fontWeight:600}}>ওয়েবসাইটের নাম</label>
                           <input style={inputStyle} value={tempSettings.owner.name} onChange={e=>setTempSettings({...tempSettings, owner:{...tempSettings.owner, name:e.target.value}})}/>
                         </div>
@@ -1175,7 +1175,7 @@ export default function App() {
                         <input style={inputStyle} required placeholder="পণ্যের নাম" value={(editing||newProduct).name} onChange={e=>editing?setEditing({...editing,name:e.target.value}):setNewProduct({...newProduct,name:e.target.value})}/>
                         <input style={inputStyle} required type="number" placeholder="ক্রয়মূল্য (Cost)" value={(editing||newProduct).cost} onChange={e=>editing?setEditing({...editing,cost:e.target.value}):setNewProduct({...newProduct,cost:e.target.value})}/>
                         <input style={inputStyle} required type="number" placeholder="বিক্রয়মূল্য (Price)" value={(editing||newProduct).price} onChange={e=>editing?setEditing({...editing,price:e.target.value}):setNewProduct({...newProduct,price:e.target.value})}/>
-[11/18/2026 10:32 PM] Al Habibi: <input style={inputStyle} required type="number" placeholder="স্টক পরিমাণ" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>
+<input style={inputStyle} required type="number" placeholder="স্টক পরিমাণ" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>
                       </div>
                       
                       <textarea style={{...inputStyle, height:90}} placeholder="পণ্যের বিবরণ (লাইন বাই লাইন বা পয়েন্ট আকারে লিখুন)" value={(editingnewProduct).description''} onChange={e=>editing?setEditing({...editing,description:e.target.value}):setNewProduct({...newProduct,description:e.target.value})}/>
@@ -1209,7 +1209,7 @@ export default function App() {
                         <div style={{display:'flex',gap:12,marginTop:12,overflowX:'auto',paddingBottom:5}}>
                           {((editing  newProduct).images  []).map((imgUrl, imgIdx)=>(
                             <div key={imgIdx} style={{position:'relative',border:imgIdx===0?'3px solid #059669':'1px solid #cbd5e1',borderRadius:10,padding:4,background:'#fff',minWidth:90,textAlign:'center'}}>
-[11/18/2026 10:32 PM] Al Habibi: <img src={imgUrl} alt="" style={{width:80,height:80,objectFit:'cover',borderRadius:8}}/>
+<img src={imgUrl} alt="" style={{width:80,height:80,objectFit:'cover',borderRadius:8}}/>
                               <div style={{fontSize:11,fontWeight:700,color:imgIdx===0?'#059669':'#64748b'}}>{imgIdx===0 ? '★ কভার ইমেজ' : ${imgIdx+1} নম্বর}</div>
                               
                               <button type="button" onClick={()=>removeImage(imgIdx)} style={{position:'absolute',top:0,right:0,background:'#dc2626',color:'#fff',border:0,borderRadius:'50%',width:22,height:22,cursor:'pointer',fontSize:12,fontWeight:700}} title="ডিলিট করুন">✕</button>
@@ -1253,8 +1253,7 @@ export default function App() {
                   <div style={panel}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
                       <h3 style={{margin:0}}>🛒 কাস্টমারদের কার্ট (এখনো অর্ডার করেনি)</h3>
-                      <button onClick={loadCarts} style={{...btn('#0284c7'),padding:'8px 14px'}}>🔄 রিফ্রেশ</button>
-[11/18/2026 10:32 PM] Al Habibi: </div>
+                      <button onClick={loadCarts} style={{...btn('#0284c7'),padding:'8px 14px'}}>🔄 রিফ্রেশ</button></div>
                     {customerCarts.length === 0 ? (
                       <p style={{color:'#64748b'}}>এখন কোনো লগইন করা কাস্টমারের কার্টে পণ্য নেই।</p>
                     ) : (
