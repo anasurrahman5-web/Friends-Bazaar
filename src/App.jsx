@@ -94,6 +94,7 @@ export default function App() {
   const [selVariant, setSelVariant] = useState(null);
   const [mainImg, setMainImg] = useState(null);
   const [dragVIdx, setDragVIdx] = useState(null);
+  const [saveErr, setSaveErr] = useState('');
   const [dragIdx, setDragIdx] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
@@ -495,6 +496,12 @@ function openProduct(p) {
   }
   function addVariant() { setVariants([...currentVariants(), { label: '', price: '', cost: '', stock: '' }]); }
   function removeVariant(idx) { setVariants(currentVariants().filter((_, i) => i !== idx)); }
+  function copyFromAbove(idx) {
+    const src = idx === 0 ? (editing || newProduct) : currentVariants()[idx - 1];
+    setVariants(currentVariants().map((v, i) => i === idx
+      ? { ...v, description: src.description || '', benefits: src.benefits || '', drawbacks: src.drawbacks || '' }
+      : v));
+  }
   function moveVariant(from, to) {
     const list = currentVariants();
     if (to < 0 || to >= list.length) return;
@@ -526,6 +533,9 @@ function openProduct(p) {
       cost: Number(v.cost) || 0,
       stock: Number(v.stock) || 0,
       image_url: v.image_url || null,
+      description: v.description || '',
+      benefits: v.benefits || '',
+      drawbacks: v.drawbacks || '',
       sort: i,
       ...(v.id ? { id: v.id } : {})
     }));
@@ -536,7 +546,7 @@ function openProduct(p) {
   }
 
   async function saveProduct(e) {
-    e.preventDefault(); setBusy(true);
+    e.preventDefault(); setBusy(true); setSaveErr('');
     try {
       const source = editing || newProduct;
       const allImages = source.images?.length ? source.images : (source.image_url ? [source.image_url] : []);
@@ -567,7 +577,7 @@ function openProduct(p) {
       setNewProduct({name:'', cost:'', price:'', stock:'', description:'', benefits:'', drawbacks:'', image_url:'', images:[], variants:[]});
       await loadAll();
       setNotice('পণ্য সফলভাবে সংরক্ষিত হয়েছে।');
-    } catch (err) { setNotice(err.message); }
+    } catch (err) { setSaveErr(err.message || 'অজানা সমস্যা'); setNotice('পণ্য আপডেট হয়নি: ' + (err.message || '')); window.scrollTo({ top: 0, behavior: 'smooth' }); }
     setBusy(false);
   }
 
@@ -859,9 +869,9 @@ function openProduct(p) {
                     </div>
 
                     <div style={{display:'flex',flexDirection:'column',gap:12,background:'#f8fafc',padding:15,borderRadius:12,marginTop:15}}>
-                      <div><b>পণ্যের বিবরণ:</b><PointList text={selectedProduct.description} empty="বিবরণ দেওয়া হয়নি।" color="#0284c7" /></div>
-                      <div><b>উপকারিতা:</b><PointList text={selectedProduct.benefits} color="#059669" /></div>
-                      <div><b>সতর্কতা/বিশেষ দ্রষ্টব্য:</b><PointList text={selectedProduct.drawbacks} color="#d97706" /></div>
+                      <div><b>পণ্যের বিবরণ:</b><PointList text={selVarObj?.description || selectedProduct.description} empty="বিবরণ দেওয়া হয়নি।" color="#0284c7" /></div>
+                      <div><b>উপকারিতা:</b><PointList text={selVarObj?.benefits || selectedProduct.benefits} color="#059669" /></div>
+                      <div><b>সতর্কতা/বিশেষ দ্রষ্টব্য:</b><PointList text={selVarObj?.drawbacks || selectedProduct.drawbacks} color="#d97706" /></div>
                     </div>
 
                     <button style={{...btn('#059669'),width:'100%',marginTop:20,padding:14,fontSize:16}} disabled={modalStock<1} onClick={()=>{addToCart(selectedProduct, selVarObj);setSelectedProduct(null);goTab('cart');}}>
@@ -1235,9 +1245,9 @@ function openProduct(p) {
                     <form onSubmit={saveProduct} style={{display:'flex',flexDirection:'column',gap:12,marginTop:15}}>
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:12}}>
                         <input style={inputStyle} required placeholder="পণ্যের নাম" value={(editing||newProduct).name} onChange={e=>editing?setEditing({...editing,name:e.target.value}):setNewProduct({...newProduct,name:e.target.value})}/>
-                        <input style={inputStyle} required={!currentVariants().length} type="number" placeholder="ক্রয়মূল্য (Cost)" value={(editing||newProduct).cost} onChange={e=>editing?setEditing({...editing,cost:e.target.value}):setNewProduct({...newProduct,cost:e.target.value})}/>
-                        <input style={inputStyle} required={!currentVariants().length} type="number" placeholder="বিক্রয়মূল্য (Price)" value={(editing||newProduct).price} onChange={e=>editing?setEditing({...editing,price:e.target.value}):setNewProduct({...newProduct,price:e.target.value})}/>
-                        <input style={inputStyle} required={!currentVariants().length} type="number" placeholder="স্টক পরিমাণ" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>
+                        {!currentVariants().length && <input style={inputStyle} type="number" placeholder="ক্রয়মূল্য (Cost)" value={(editing||newProduct).cost} onChange={e=>editing?setEditing({...editing,cost:e.target.value}):setNewProduct({...newProduct,cost:e.target.value})}/>}
+                        {!currentVariants().length && <input style={inputStyle} type="number" placeholder="বিক্রয়মূল্য (Price)" value={(editing||newProduct).price} onChange={e=>editing?setEditing({...editing,price:e.target.value}):setNewProduct({...newProduct,price:e.target.value})}/>}
+                        {!currentVariants().length && <input style={inputStyle} type="number" placeholder="স্টক পরিমাণ" value={(editing||newProduct).stock} onChange={e=>editing?setEditing({...editing,stock:e.target.value}):setNewProduct({...newProduct,stock:e.target.value})}/>}
                       </div>
                       <textarea style={inputStyle} placeholder="পণ্যের বিবরণ (প্রতিটি পয়েন্ট আলাদা লাইনে, Enter চেপে লিখুন)" value={(editing||newProduct).description||''} onChange={e=>editing?setEditing({...editing,description:e.target.value}):setNewProduct({...newProduct,description:e.target.value})}/>
                       <textarea style={inputStyle} placeholder="উপকারিতা (প্রতিটি পয়েন্ট আলাদা লাইনে, Enter চেপে লিখুন)" value={(editing||newProduct).benefits||''} onChange={e=>editing?setEditing({...editing,benefits:e.target.value}):setNewProduct({...newProduct,benefits:e.target.value})}/>
@@ -1247,12 +1257,7 @@ function openProduct(p) {
                         <div style={{fontWeight:700,marginBottom:4}}>ভ্যারিয়েন্ট / সাইজ / ওজন (ঐচ্ছিক)</div>
                         <div style={{fontSize:13,color:'#64748b',marginBottom:10}}>যেমন: 20 গ্রাম, 30 গ্রাম, 40 গ্রাম। প্রতিটির আলাদা দাম ও স্টক দিন। ভ্যারিয়েন্ট দিলে উপরের দাম ও স্টক ঘর ফাঁকা রাখতে পারেন।</div>
                         {currentVariants().map((v, idx) => (
-                          <div key={v.id || ('new' + idx)} draggable
-                            onDragStart={()=>setDragVIdx(idx)}
-                            onDragOver={e=>e.preventDefault()}
-                            onDrop={()=>{ if (dragVIdx !== null && dragVIdx !== idx) moveVariant(dragVIdx, idx); setDragVIdx(null); }}
-                            onDragEnd={()=>setDragVIdx(null)}
-                            style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8,alignItems:'center',padding:8,borderRadius:10,background:idx===0?'#ecfdf5':'transparent',border:idx===0?'1px solid #34d399':'1px solid transparent'}}>
+                          <div key={v.id || ('new' + idx)} style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8,alignItems:'center',padding:8,borderRadius:10,background:idx===0?'#ecfdf5':'transparent',border:idx===0?'1px solid #34d399':'1px solid transparent'}}>
                             <div style={{display:'flex',flexDirection:'column',gap:2}}>
                               <button type="button" disabled={idx===0} onClick={()=>moveVariant(idx,idx-1)} style={{...btn('#64748b'),padding:'2px 8px'}}>▲</button>
                               <button type="button" disabled={idx===currentVariants().length-1} onClick={()=>moveVariant(idx,idx+1)} style={{...btn('#64748b'),padding:'2px 8px'}}>▼</button>
@@ -1270,12 +1275,21 @@ function openProduct(p) {
                               <input type="file" accept="image/*" onChange={e=>uploadVariantImage(idx, e.target.files?.[0])}/>
                               {v.image_url && <button type="button" onClick={()=>updateVariant(idx,'image_url',null)} style={{...btn('#64748b'),padding:'6px 10px'}}>ছবি সরান</button>}
                             </div>
+                            <div style={{flexBasis:'100%',display:'flex',flexDirection:'column',gap:8,marginTop:6}}>
+                              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+                                <b style={{fontSize:14}}>এই সাইজের বিবরণ / উপকারিতা / সতর্কতা</b>
+                                <button type="button" onClick={()=>copyFromAbove(idx)} style={{...btn('#7c3aed'),padding:'6px 12px',fontSize:13}}>{idx===0 ? 'পণ্যের মূল লেখার মতো' : 'উপরের সাইজের মতো'}</button>
+                              </div>
+                              <textarea style={{...inputStyle,height:80}} placeholder="বিবরণ (প্রতিটি পয়েন্ট আলাদা লাইনে)" value={v.description || ''} onChange={e=>updateVariant(idx,'description',e.target.value)}/>
+                              <textarea style={{...inputStyle,height:60}} placeholder="উপকারিতা (প্রতিটি পয়েন্ট আলাদা লাইনে)" value={v.benefits || ''} onChange={e=>updateVariant(idx,'benefits',e.target.value)}/>
+                              <textarea style={{...inputStyle,height:60}} placeholder="সতর্কতা / বিশেষ দ্রষ্টব্য" value={v.drawbacks || ''} onChange={e=>updateVariant(idx,'drawbacks',e.target.value)}/>
+                            </div>
                           </div>
                         ))}
                         <button type="button" onClick={addVariant} style={btn('#0284c7')}>+ ভ্যারিয়েন্ট যোগ করুন</button>
                       </div>
 
-                      <div>
+                      {!currentVariants().length && (<div>
                         <label style={{display:'block',marginBottom:8,fontWeight:600}}>ছবি (ড্র্যাগ করে সাজান। প্রথম ছবিটি কাস্টমার আগে দেখবে। ✕ চেপে মুছুন)</label>
                         <div style={{display:'flex',flexWrap:'wrap',gap:12,marginBottom:12}}>
                           {currentImages().map((img, idx, arr) => (
@@ -1298,8 +1312,9 @@ function openProduct(p) {
                           ))}
                         </div>
                         <input type="file" accept="image/*" multiple onChange={handleMultipleImagesUpload}/>
-                      </div>
+                      </div>)}
 
+                      {saveErr && <div style={{background:'#fef2f2',color:'#991b1b',padding:12,borderRadius:8,fontWeight:600}}>পণ্য আপডেট হয়নি: {saveErr}</div>}
                       <div style={{display:'flex',gap:10}}>
                         <button style={btn('#059669')}>{editing?'পণ্য আপডেট করুন':'পণ্য যুক্ত করুন'}</button>
                         {editing && <button type="button" onClick={()=>setEditing(null)} style={btn('#64748b')}>বাতিল</button>}
