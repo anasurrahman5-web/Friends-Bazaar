@@ -97,6 +97,7 @@ export default function App() {
   const [saveErr, setSaveErr] = useState('');
   const [editOrig, setEditOrig] = useState(null);
   const [priceEdit, setPriceEdit] = useState(null);
+  const [orderEdit, setOrderEdit] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
@@ -392,7 +393,7 @@ export default function App() {
       p_email: checkout.email.trim() || null,
       p_address: checkout.address.trim(),
       p_payment_method: checkout.paymentMethod,
-      p_trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId.trim() : 'Cash on Delivery',
+      p_trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId.trim() : (checkout.paymentMethod === 'Hand Cash' ? 'Hand Cash' : 'Cash on Delivery'),
       p_items: items
     });
     
@@ -410,7 +411,7 @@ export default function App() {
         customer_name: checkout.name,
         phone: checkout.phone,
         address: checkout.address,
-        trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId : 'Cash on Delivery',
+        trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId : (checkout.paymentMethod === 'Hand Cash' ? 'Hand Cash' : 'Cash on Delivery'),
         status: 'Pending',
         total: data.total,
         order_items: (data.items || []).map(i => ({ qty: i.qty, price: i.price, products: { name: i.name } }))
@@ -418,6 +419,10 @@ export default function App() {
     }
 
     setCart([]); 
+    // অ্যাডমিন হ্যান্ড ক্যাশ বিক্রি করলে অর্ডার সাথে সাথে Completed হবে (টাকা আগেই নেওয়া হয়েছে)
+    if (data?.order_id && isAdmin && checkout.paymentMethod === 'Hand Cash') {
+      await updateOrderStatus(data.order_id, 'Completed');
+    }
     setCheckout({ ...accountDefaults(), paymentMethod:'Cash on Delivery', trxId:'' });
     await loadAll();
     setNotice('🎉 আপনার অর্ডারটি সফলভাবে কনফার্ম হয়েছে!');
@@ -678,6 +683,35 @@ function openProduct(p) {
     await loadAll();
   }
 
+  function startOrderEdit(o) {
+    setOrderEdit({
+      id: o.id,
+      order_code: o.order_code || '',
+      customer_name: o.customer_name || '',
+      phone: o.phone || '',
+      customer_email: o.customer_email || '',
+      address: o.address || ''
+    });
+  }
+
+  async function saveOrderEdit() {
+    const e = orderEdit;
+    if (!e.order_code.trim()) return setNotice('অর্ডার আইডি খালি রাখা যাবে না।');
+    if (!e.customer_name.trim()) return setNotice('গ্রাহকের নাম খালি রাখা যাবে না।');
+    if (e.phone && e.phone.length !== 11) return setNotice('মোবাইল নম্বর ১১ ডিজিটের হতে হবে।');
+    const { error } = await supabase.from('orders').update({
+      order_code: e.order_code.trim(),
+      customer_name: e.customer_name.trim(),
+      phone: e.phone.trim(),
+      customer_email: e.customer_email.trim() || null,
+      address: e.address.trim()
+    }).eq('id', e.id);
+    if (error) return setNotice('এডিট হয়নি: ' + error.message);
+    setOrderEdit(null);
+    await loadAll();
+    setNotice('অর্ডারের তথ্য আপডেট হয়েছে।');
+  }
+
   async function saveOrderItemPrice(item, value) {
     const v = Number(value);
     if (!(v >= 0) || value === '') return setNotice('সঠিক দাম লিখুন।');
@@ -733,8 +767,8 @@ function openProduct(p) {
             <p style="margin:4px 0;"><b>গ্রাহকের নাম:</b> ${order.customer_name}</p>
             <p style="margin:4px 0;"><b>ফোন নম্বর:</b> ${order.phone}</p>
             <p style="margin:4px 0;"><b>ঠিকানা:</b> ${order.address}</p>
-            <p style="margin:4px 0;"><b>পেমেন্ট মাধ্যম:</b> ${order.trx_id === 'Cash on Delivery' ? 'ক্যাশ অন ডেলিভারি' : 'বিকাশ'}</p>
-            ${order.trx_id !== 'Cash on Delivery' ? `<p style="margin:4px 0;"><b>বিকাশ TrxID:</b> ${order.trx_id}</p>` : ''}
+            <p style="margin:4px 0;"><b>পেমেন্ট মাধ্যম:</b> ${order.trx_id === 'Hand Cash' ? 'হ্যান্ড ক্যাশ' : order.trx_id === 'Cash on Delivery' ? 'ক্যাশ অন ডেলিভারি' : 'বিকাশ'}</p>
+            ${order.trx_id !== 'Cash on Delivery' && order.trx_id !== 'Hand Cash' ? `<p style="margin:4px 0;"><b>বিকাশ TrxID:</b> ${order.trx_id}</p>` : ''}
             <p style="margin:4px 0;"><b>অর্ডার স্ট্যাটাস:</b> <span style="color:${order.status==='Cancelled'?'#dc2626':'#059669'}">${order.status}</span></p>
           </div>
 
@@ -974,6 +1008,16 @@ function openProduct(p) {
                           onChange={()=>setCheckout({...checkout, paymentMethod: 'bKash'})}
                         /> বিকাশ পেমেন্ট (bKash)
                       </label>
+                      {isAdmin && (
+                        <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontWeight:600}}>
+                          <input
+                            type="radio"
+                            name="paymentMethod"
+                            checked={checkout.paymentMethod === 'Hand Cash'}
+                            onChange={()=>setCheckout({...checkout, paymentMethod: 'Hand Cash'})}
+                          /> হ্যান্ড ক্যাশ (সরাসরি টাকা)
+                        </label>
+                      )}
                     </div>
 
                     {checkout.paymentMethod === 'bKash' && (
@@ -1405,7 +1449,7 @@ function openProduct(p) {
                           </tr>
                         </thead>
                         <tbody>
-                          {orders.map(o=>(
+                          {orders.map(o=>(<React.Fragment key={o.id}>
                             <tr key={o.id} style={{borderBottom:'1px solid #e2e8f0', background: o.status==='Cancelled' ? '#fef2f2' : 'transparent'}}>
                               <td style={{padding:10,fontWeight:700}}>{o.order_code}</td>
                               <td style={{padding:10,minWidth:230}}>
@@ -1435,7 +1479,7 @@ function openProduct(p) {
                               <td style={{padding:10}}>{o.customer_name}</td>
                               <td style={{padding:10}}>{o.phone}<br/>{o.customer_email && <>{o.customer_email}<br/></>}{o.address}</td>
                               <td style={{padding:10}}>
-                                {o.trx_id === 'Cash on Delivery' ? <span style={{color:'#d97706', fontWeight:600}}>COD (নগদ)</span> : <span>বিকাশ<br/><small>Trx: {o.trx_id}</small></span>}
+                                {o.trx_id === 'Hand Cash' ? <span style={{color:'#059669', fontWeight:600}}>হ্যান্ড ক্যাশ</span> : o.trx_id === 'Cash on Delivery' ? <span style={{color:'#d97706', fontWeight:600}}>COD (নগদ)</span> : <span>বিকাশ<br/><small>Trx: {o.trx_id}</small></span>}
                               </td>
                               <td style={{padding:10,fontWeight:700,color:'#059669'}}>{money(o.total)}</td>
                               <td style={{padding:10}}>
@@ -1449,10 +1493,40 @@ function openProduct(p) {
                               <td style={{padding:10}}>
                                 <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                                   <button onClick={()=>downloadInvoice(o)} style={{padding:'6px 12px',background:'#0284c7',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>📥 প্রিন্ট</button>
+                                  <button onClick={()=>startOrderEdit(o)} style={{padding:'6px 12px',background:'#7c3aed',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>✏️ এডিট</button>
                                   <button onClick={()=>deleteOrder(o)} style={{padding:'6px 12px',background:'#dc2626',color:'#fff',border:0,borderRadius:6,cursor:'pointer',fontWeight:600}}>🗑️ ডিলিট</button>
                                 </div>
                               </td>
                             </tr>
+                          {orderEdit?.id === o.id && (
+                            <tr>
+                              <td colSpan={8} style={{padding:15,background:'#fffbeb'}}>
+                                <b>অর্ডার এডিট: {orderEdit.order_code}</b>
+                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:12,marginTop:10}}>
+                                  <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:600}}>অর্ডার আইডি (কোড)
+                                    <input style={inputStyle} value={orderEdit.order_code} onChange={e=>setOrderEdit({...orderEdit,order_code:e.target.value})}/>
+                                  </label>
+                                  <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:600}}>গ্রাহকের নাম
+                                    <input style={inputStyle} value={orderEdit.customer_name} onChange={e=>setOrderEdit({...orderEdit,customer_name:e.target.value})}/>
+                                  </label>
+                                  <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:600}}>মোবাইল নম্বর
+                                    <input style={inputStyle} type="tel" maxLength={11} value={orderEdit.phone} onChange={e=>setOrderEdit({...orderEdit,phone:e.target.value.replace(/\D/g,'')})}/>
+                                  </label>
+                                  <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:600}}>ইমেইল (ঐচ্ছিক)
+                                    <input style={inputStyle} type="email" value={orderEdit.customer_email} onChange={e=>setOrderEdit({...orderEdit,customer_email:e.target.value})}/>
+                                  </label>
+                                  <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:600,gridColumn:'1 / -1'}}>ঠিকানা
+                                    <textarea style={{...inputStyle,height:70}} value={orderEdit.address} onChange={e=>setOrderEdit({...orderEdit,address:e.target.value})}/>
+                                  </label>
+                                </div>
+                                <div style={{display:'flex',gap:10,marginTop:12}}>
+                                  <button type="button" onClick={saveOrderEdit} style={btn('#059669')}>সেভ করুন</button>
+                                  <button type="button" onClick={()=>setOrderEdit(null)} style={btn('#64748b')}>বাতিল</button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          </React.Fragment>
                           ))}
                         </tbody>
                       </table>
