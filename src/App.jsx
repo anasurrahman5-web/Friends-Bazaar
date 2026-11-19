@@ -95,6 +95,7 @@ export default function App() {
   const [mainImg, setMainImg] = useState(null);
   const [dragVIdx, setDragVIdx] = useState(null);
   const [saveErr, setSaveErr] = useState('');
+  const [editOrig, setEditOrig] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
@@ -514,6 +515,7 @@ function openProduct(p) {
   function startEdit(p) {
     const imgs = p.images?.length ? p.images : (p.image_url ? [p.image_url] : []);
     setEditing({ ...p, images: imgs, variants: (p.product_variants || []).map(v => ({ ...v })) });
+    setEditOrig({ description: p.description || '', benefits: p.benefits || '', drawbacks: p.drawbacks || '' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -550,7 +552,18 @@ function openProduct(p) {
     try {
       const source = editing || newProduct;
       const allImages = source.images?.length ? source.images : (source.image_url ? [source.image_url] : []);
-      const vars = (source.variants || []).filter(v => String(v.label || '').trim());
+      let vars = (source.variants || []).filter(v => String(v.label || '').trim());
+      // মূল বিবরণ বদলালে যে সাইজের লেখা আগের মূল লেখার সমান ছিল, সেগুলো নতুনটার সাথে নিজে থেকে আপডেট হবে
+      if (editOrig) {
+        const same = (a, b) => String(a || '').trim() === String(b || '').trim();
+        vars = vars.map(v => {
+          const out = { ...v };
+          ['description', 'benefits', 'drawbacks'].forEach(k => {
+            if (same(v[k], editOrig[k]) || !String(v[k] || '').trim()) out[k] = source[k] || '';
+          });
+          return out;
+        });
+      }
       const hasVars = vars.length > 0;
       const row = {
         name: source.name.trim(),
@@ -574,6 +587,7 @@ function openProduct(p) {
       }
       await saveVariants(pid, vars);
       setEditing(null);
+      setEditOrig(null);
       setNewProduct({name:'', cost:'', price:'', stock:'', description:'', benefits:'', drawbacks:'', image_url:'', images:[], variants:[]});
       await loadAll();
       setNotice('পণ্য সফলভাবে সংরক্ষিত হয়েছে।');
