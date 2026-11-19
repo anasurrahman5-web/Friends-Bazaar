@@ -96,6 +96,7 @@ export default function App() {
   const [dragVIdx, setDragVIdx] = useState(null);
   const [saveErr, setSaveErr] = useState('');
   const [editOrig, setEditOrig] = useState(null);
+  const [priceEdit, setPriceEdit] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
@@ -675,6 +676,14 @@ function openProduct(p) {
     if (!confirm('পার্টনারকে তালিকা থেকে সরাতে চান?')) return;
     await supabase.from('partners').delete().eq('id', id);
     await loadAll();
+  }
+
+  async function saveOrderItemPrice(item, value) {
+    const v = Number(value);
+    if (!(v >= 0) || value === '') return setNotice('সঠিক দাম লিখুন।');
+    const { error } = await supabase.rpc('update_order_item_price', { p_item_id: String(item.id), p_new_price: v });
+    if (error) setNotice('দাম আপডেট হয়নি: ' + error.message);
+    else { setPriceEdit(null); await loadAll(); setNotice('এই অর্ডারের দাম আপডেট হয়েছে। মোট ও প্রফিট নতুন হিসাবে হালনাগাদ হয়েছে।'); }
   }
 
   async function changeOrderItemQty(item, delta) {
@@ -1402,7 +1411,19 @@ function openProduct(p) {
                               <td style={{padding:10,minWidth:230}}>
                                 {(o.order_items||[]).map(item=>(
                                   <div key={item.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:6}}>
-                                    <span style={{fontWeight:600}}>{item.product_name || item.products?.name || 'পণ্য'}</span>
+                                    <div style={{display:'flex',flexDirection:'column'}}>
+                                      <span style={{fontWeight:600}}>{item.product_name || item.products?.name || 'পণ্য'}</span>
+                                      <span style={{fontSize:12,display:'flex',gap:4,alignItems:'center',marginTop:3,color:'#64748b'}}>
+                                        দাম ৳
+                                        <input type="number" min="0" step="0.5" disabled={o.status==='Cancelled'}
+                                          value={priceEdit?.id===item.id ? priceEdit.value : item.price}
+                                          onChange={e=>setPriceEdit({id:item.id, value:e.target.value})}
+                                          style={{width:70,padding:'2px 4px',borderRadius:6,border:'1px solid #cbd5e1'}}/>
+                                        {priceEdit?.id===item.id && (
+                                          <button type="button" onClick={()=>saveOrderItemPrice(item, priceEdit.value)} style={{...btn('#059669'),padding:'2px 8px',fontSize:12}}>সেভ</button>
+                                        )}
+                                      </span>
+                                    </div>
                                     <span style={{display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>
                                       <button disabled={o.status==='Cancelled'} onClick={()=>changeOrderItemQty(item,-1)} style={{padding:'2px 9px',background:'#cbd5e1',border:0,borderRadius:6,cursor:'pointer',fontWeight:700}}>-</button>
                                       <b>{item.qty} পিস</b>
