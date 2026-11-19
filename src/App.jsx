@@ -31,7 +31,7 @@ function makeLine(p, v, qty) {
     name: p.name,
     price: Number(v ? v.price : p.price),
     stock: Number(v ? v.stock : p.stock),
-    image_url: p.image_url,
+    image_url: v?.image_url || p.image_url,
     qty
   };
 }
@@ -92,6 +92,8 @@ export default function App() {
   
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selVariant, setSelVariant] = useState(null);
+  const [mainImg, setMainImg] = useState(null);
+  const [dragVIdx, setDragVIdx] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
@@ -446,7 +448,25 @@ export default function App() {
 function openProduct(p) {
     setSelectedProduct(p);
     setActiveImageIndex(0);
-    setSelVariant(p.product_variants?.[0]?.id ?? null);
+    const first = p.product_variants?.[0] || null;
+    setSelVariant(first?.id ?? null);
+    setMainImg(first?.image_url || p.images?.[0] || p.image_url || null);
+  }
+
+  function pickVariant(v) {
+    setSelVariant(v.id);
+    setMainImg(v.image_url || selectedProduct?.images?.[0] || selectedProduct?.image_url || null);
+  }
+
+  async function uploadVariantImage(idx, file) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const url = await uploadImage(file, 'variants');
+      updateVariant(idx, 'image_url', url);
+      setNotice('ভ্যারিয়েন্টের ছবি আপলোড হয়েছে!');
+    } catch (err) { setNotice(err.message); }
+    setBusy(false);
   }
 
   function currentImages() {
@@ -475,6 +495,14 @@ function openProduct(p) {
   }
   function addVariant() { setVariants([...currentVariants(), { label: '', price: '', cost: '', stock: '' }]); }
   function removeVariant(idx) { setVariants(currentVariants().filter((_, i) => i !== idx)); }
+  function moveVariant(from, to) {
+    const list = currentVariants();
+    if (to < 0 || to >= list.length) return;
+    const l = [...list];
+    const [m] = l.splice(from, 1);
+    l.splice(to, 0, m);
+    setVariants(l);
+  }
 
   function startEdit(p) {
     const imgs = p.images?.length ? p.images : (p.image_url ? [p.image_url] : []);
@@ -497,6 +525,7 @@ function openProduct(p) {
       price: Number(v.price) || 0,
       cost: Number(v.cost) || 0,
       stock: Number(v.stock) || 0,
+      image_url: v.image_url || null,
       sort: i,
       ...(v.id ? { id: v.id } : {})
     }));
@@ -747,7 +776,7 @@ function openProduct(p) {
                 {products.map(p=>(
                   <div key={p.id} style={{background:'#fff',borderRadius:16,overflow:'hidden',boxShadow:'0 4px 20px rgba(0,0,0,0.04)',display:'flex',flexDirection:'column',border:'1px solid #e2e8f0',transition:'transform 0.2s'}}>
                     <div onClick={()=>openProduct(p)} style={{cursor:'pointer',height:220,background:'#f1f5f9',position:'relative'}}>
-                      <img src={p.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80'} alt={p.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                      <img src={p.product_variants?.[0]?.image_url || p.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80'} alt={p.name} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
                       <span style={{position:'absolute',top:12,right:12,background:p.stock>0?'#059669':'#dc2626',color:'#fff',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700}}>
                         {p.stock>0 ? `স্টক: ${p.stock}` : 'স্টক আউট'}
                       </span>
@@ -770,7 +799,7 @@ function openProduct(p) {
                 <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.75)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:3000,padding:20}}>
                   <div style={{background:'#fff',padding:30,borderRadius:20,maxWidth:750,width:'100%',maxHeight:'90vh',overflowY:'auto',position:'relative'}}>
                     <button onClick={()=>setSelectedProduct(null)} style={{position:'absolute',top:15,right:15,background:'#ef4444',color:'#fff',border:0,borderRadius:'50%',width:32,height:32,cursor:'pointer',fontWeight:700}}>✕</button>
-                    <h2 style={{fontSize:24,marginBottom:5}}>{selectedProduct.name}</h2>
+                    <h2 style={{fontSize:24,marginBottom:5}}>{selectedProduct.name}{selVarObj ? ' (' + selVarObj.label + ')' : ''}</h2>
                     <strong style={{color:'#059669',fontSize:26}}>{money(modalPrice)}</strong>
                     <p style={{fontSize:14,color:modalStock>0?'#059669':'#dc2626',fontWeight:600,marginTop:5}}>
                       {modalStock>0 ? `উপলব্ধ স্টক: ${modalStock} টি` : 'পণ্যটি স্টকে নেই'}
@@ -778,21 +807,41 @@ function openProduct(p) {
 
                     {selectedProduct.product_variants?.length > 0 && (
                       <div style={{marginTop:15}}>
-                        <div style={{fontWeight:700,marginBottom:8}}>সাইজ / ওজন বেছে নিন:</div>
-                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                          {selectedProduct.product_variants.map(v=>(
-                            <button key={v.id} type="button" disabled={Number(v.stock)<1} onClick={()=>setSelVariant(v.id)}
-                              style={{padding:'8px 14px',borderRadius:10,fontWeight:600,cursor:Number(v.stock)<1?'not-allowed':'pointer',opacity:Number(v.stock)<1?0.5:1,border:selVariant===v.id?'2px solid #0284c7':'1px solid #cbd5e1',background:selVariant===v.id?'#e0f2fe':'#fff'}}>
-                              {v.label} — {money(v.price)}{Number(v.stock)<1?' (স্টক আউট)':''}
-                            </button>
-                          ))}
+                        <div style={{fontWeight:700,marginBottom:4}}>সাইজ / ওজন বেছে নিন</div>
+                        <div style={{fontSize:13,color:'#64748b',marginBottom:10}}>যেটায় ক্লিক করবেন, তার ছবি, নাম ও দাম উপরে আসবে এবং সেটাই কার্টে যাবে।</div>
+                        <div style={{display:'flex',gap:12,overflowX:'auto',paddingBottom:6}}>
+                          {selectedProduct.product_variants.map(v=>{
+                            const out = Number(v.stock) < 1;
+                            const on = selVariant === v.id;
+                            return (
+                              <button key={v.id} type="button" disabled={out} onClick={()=>pickVariant(v)}
+                                style={{flex:'0 0 auto',display:'flex',flexDirection:'column',alignItems:'center',gap:6,padding:8,width:130,borderRadius:14,background:on?'#e0f2fe':'#fff',border:on?'2px solid #0284c7':'1px solid #cbd5e1',cursor:out?'not-allowed':'pointer',opacity:out?0.5:1,boxShadow:on?'0 4px 12px rgba(2,132,199,0.25)':'none'}}>
+                                {v.image_url
+                                  ? <img src={v.image_url} alt={v.label} style={{width:110,height:110,objectFit:'cover',borderRadius:10}}/>
+                                  : <div style={{width:110,height:110,borderRadius:10,background:'#f1f5f9',display:'flex',alignItems:'center',justifyContent:'center',color:'#94a3b8',fontSize:12}}>ছবি নেই</div>}
+                                <b style={{fontSize:15}}>{v.label}</b>
+                                <span style={{color:'#059669',fontWeight:700}}>{money(v.price)}</span>
+                                {on && <span style={{fontSize:11,background:'#0284c7',color:'#fff',borderRadius:10,padding:'2px 8px'}}>বাছাই করা</span>}
+                                {out && <small style={{color:'#dc2626'}}>স্টক আউট</small>}
+                              </button>
+                            );
+                          })}
                         </div>
+                        {selVarObj && (
+                          <div style={{marginTop:12,padding:12,borderRadius:12,background:'#f8fafc',border:'1px solid #e2e8f0'}}>
+                            <div style={{fontWeight:700,fontSize:17}}>{selectedProduct.name} — {selVarObj.label}</div>
+                            <div style={{color:'#059669',fontWeight:700,fontSize:20,marginTop:4}}>{money(selVarObj.price)}</div>
+                            <div style={{fontSize:13,color:Number(selVarObj.stock)>0?'#059669':'#dc2626',marginTop:2}}>
+                              {Number(selVarObj.stock)>0 ? `এই সাইজে স্টক: ${selVarObj.stock} টি` : 'এই সাইজের স্টক শেষ'}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
                     <div style={{textAlign:'center',margin:'20px 0',position:'relative'}}>
                       <img 
-                        src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image_url} 
+                        src={mainImg || selectedProduct.image_url} 
                         alt="" 
                         onClick={()=>setIsZoomed(true)} 
                         style={{maxHeight:280,width:'100%',objectFit:'contain',borderRadius:10,cursor:'zoom-in',border:'1px solid #e2e8f0'}}
@@ -803,7 +852,7 @@ function openProduct(p) {
                       {selectedProduct.images?.length > 1 && (
                         <div style={{display:'flex',gap:8,justifyContent:'center',marginTop:12,overflowX:'auto',paddingBottom:5}}>
                           {selectedProduct.images.map((img, idx)=>(
-                            <img key={idx} src={img} alt="" onClick={()=>setActiveImageIndex(idx)} style={{width:60,height:60,objectFit:'cover',borderRadius:8,border:activeImageIndex===idx?'2px solid #0284c7':'2px solid #cbd5e1',cursor:'pointer'}}/>
+                            <img key={idx} src={img} alt="" onClick={()=>setMainImg(img)} style={{width:60,height:60,objectFit:'cover',borderRadius:8,border:mainImg===img?'2px solid #0284c7':'2px solid #cbd5e1',cursor:'pointer'}}/>
                           ))}
                         </div>
                       )}
@@ -825,7 +874,7 @@ function openProduct(p) {
               {/* ইমেজ জুম মোড */}
               {isZoomed && selectedProduct && (
                 <div onClick={()=>setIsZoomed(false)} style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.9)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:4000,cursor:'zoom-out'}}>
-                  <img src={(selectedProduct.images && selectedProduct.images[activeImageIndex]) || selectedProduct.image_url} alt="" style={{maxWidth:'95vw',maxHeight:'95vh',objectFit:'contain'}}/>
+                  <img src={mainImg || selectedProduct.image_url} alt="" style={{maxWidth:'95vw',maxHeight:'95vh',objectFit:'contain'}}/>
                 </div>
               )}
             </div>
@@ -1198,12 +1247,29 @@ function openProduct(p) {
                         <div style={{fontWeight:700,marginBottom:4}}>ভ্যারিয়েন্ট / সাইজ / ওজন (ঐচ্ছিক)</div>
                         <div style={{fontSize:13,color:'#64748b',marginBottom:10}}>যেমন: 20 গ্রাম, 30 গ্রাম, 40 গ্রাম। প্রতিটির আলাদা দাম ও স্টক দিন। ভ্যারিয়েন্ট দিলে উপরের দাম ও স্টক ঘর ফাঁকা রাখতে পারেন।</div>
                         {currentVariants().map((v, idx) => (
-                          <div key={v.id || ('new' + idx)} style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8,alignItems:'center'}}>
+                          <div key={v.id || ('new' + idx)} draggable
+                            onDragStart={()=>setDragVIdx(idx)}
+                            onDragOver={e=>e.preventDefault()}
+                            onDrop={()=>{ if (dragVIdx !== null && dragVIdx !== idx) moveVariant(dragVIdx, idx); setDragVIdx(null); }}
+                            onDragEnd={()=>setDragVIdx(null)}
+                            style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8,alignItems:'center',padding:8,borderRadius:10,background:idx===0?'#ecfdf5':'transparent',border:idx===0?'1px solid #34d399':'1px solid transparent'}}>
+                            <div style={{display:'flex',flexDirection:'column',gap:2}}>
+                              <button type="button" disabled={idx===0} onClick={()=>moveVariant(idx,idx-1)} style={{...btn('#64748b'),padding:'2px 8px'}}>▲</button>
+                              <button type="button" disabled={idx===currentVariants().length-1} onClick={()=>moveVariant(idx,idx+1)} style={{...btn('#64748b'),padding:'2px 8px'}}>▼</button>
+                            </div>
+                            <span style={{fontSize:12,color:'#64748b',minWidth:44}}>{idx===0 ? 'প্রথম' : (idx+1)+' নং'}</span>
                             <input style={{...inputStyle,flex:'2 1 140px'}} placeholder="নাম (যেমন 20 গ্রাম)" value={v.label} onChange={e=>updateVariant(idx,'label',e.target.value)}/>
                             <input style={{...inputStyle,flex:'1 1 100px'}} type="number" placeholder="বিক্রয়মূল্য" value={v.price} onChange={e=>updateVariant(idx,'price',e.target.value)}/>
                             <input style={{...inputStyle,flex:'1 1 100px'}} type="number" placeholder="ক্রয়মূল্য" value={v.cost ?? ''} onChange={e=>updateVariant(idx,'cost',e.target.value)}/>
                             <input style={{...inputStyle,flex:'1 1 100px'}} type="number" placeholder="স্টক" value={v.stock} onChange={e=>updateVariant(idx,'stock',e.target.value)}/>
                             <button type="button" onClick={()=>removeVariant(idx)} style={{...btn('#dc2626'),padding:'10px 14px'}}>✕</button>
+                            <div style={{flexBasis:'100%',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                              {v.image_url
+                                ? <img src={v.image_url} alt="" style={{width:60,height:60,objectFit:'cover',borderRadius:8,border:'2px solid #059669'}}/>
+                                : <div style={{width:60,height:60,borderRadius:8,background:'#f1f5f9',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'#94a3b8'}}>ছবি নেই</div>}
+                              <input type="file" accept="image/*" onChange={e=>uploadVariantImage(idx, e.target.files?.[0])}/>
+                              {v.image_url && <button type="button" onClick={()=>updateVariant(idx,'image_url',null)} style={{...btn('#64748b'),padding:'6px 10px'}}>ছবি সরান</button>}
+                            </div>
                           </div>
                         ))}
                         <button type="button" onClick={addVariant} style={btn('#0284c7')}>+ ভ্যারিয়েন্ট যোগ করুন</button>
