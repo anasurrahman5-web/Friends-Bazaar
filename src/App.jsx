@@ -108,6 +108,12 @@ export default function App() {
 
   const isAdmin = ['admin', 'owner'].includes(adminRole);
 
+  const [lang, setLang] = useState(() => { try { return localStorage.getItem('fb_lang') || 'bn'; } catch (e) { return 'bn'; } });
+  useEffect(() => { try { localStorage.setItem('fb_lang', lang); } catch (e) {} }, [lang]);
+  const L = lang === 'en'
+    ? { shop: '🛍️ Shop', cart: '🛒 Cart', login: '👤 Login', account: '👤 Account', admin: '⚙️ Admin', toggle: 'বাংলা' }
+    : { shop: '🛍️ শপ', cart: '🛒 কার্ট', login: '👤 লগইন', account: '👤 অ্যাকাউন্ট', admin: '⚙️ অ্যাডমিন', toggle: 'English' };
+
   const selVarObj = selectedProduct?.product_variants?.find(v => v.id === selVariant) || null;
   const modalStock = selVarObj ? Number(selVarObj.stock) : Number(selectedProduct?.stock || 0);
   const modalPrice = selVarObj ? Number(selVarObj.price) : Number(selectedProduct?.price || 0);
@@ -729,13 +735,40 @@ function openProduct(p) {
   }
 
   function downloadInvoice(order) {
-    const printWindow = window.open('', '_blank');
+    const en = lang === 'en';
+    const T = en ? {
+      inv: 'INVOICE', code: 'Order Code', date: 'Date', name: 'Customer Name', phone: 'Phone', address: 'Address',
+      pay: 'Payment Method', cod: 'Cash on Delivery', bkash: 'bKash', hand: 'Hand Cash', trx: 'bKash TrxID',
+      status: 'Order Status', item: 'Item', qty: 'Qty', price: 'Price', total: 'Total', pcs: 'pcs',
+      grand: 'Total Payable', thanks: 'Thank you for shopping with us! — Friends Bazaar', product: 'Product',
+      contact: 'Phone'
+    } : {
+      inv: 'INVOICE', code: 'কোড', date: 'তারিখ', name: 'গ্রাহকের নাম', phone: 'ফোন নম্বর', address: 'ঠিকানা',
+      pay: 'পেমেন্ট মাধ্যম', cod: 'ক্যাশ অন ডেলিভারি', bkash: 'বিকাশ', hand: 'হ্যান্ড ক্যাশ', trx: 'বিকাশ TrxID',
+      status: 'অর্ডার স্ট্যাটাস', item: 'পণ্যের নাম', qty: 'পরিমাণ', price: 'মূল্য', total: 'মোট', pcs: 'টি',
+      grand: 'মোট প্রদেয়', thanks: 'আমাদের সাথে থাকার জন্য ধন্যবাদ! — Friends Bazaar', product: 'পণ্য',
+      contact: 'ফোন'
+    };
+    const statusTxt = en
+      ? { Pending: 'Pending', Processing: 'Processing', Completed: 'Completed', Cancelled: 'Cancelled' }
+      : { Pending: 'অপেক্ষমাণ', Processing: 'প্রক্রিয়াধীন', Completed: 'সম্পন্ন', Cancelled: 'বাতিল' };
+    const payTxt = order.trx_id === 'Hand Cash' ? T.hand : order.trx_id === 'Cash on Delivery' ? T.cod : T.bkash;
+    const dateTxt = new Date(order.created_at).toLocaleDateString(en ? 'en-GB' : 'bn-BD');
+    const money2 = n => '৳ ' + Number(n || 0).toLocaleString('en-BD');
+    const items = (order.order_items || []).map(item => `
+                <tr>
+                  <td>${item.product_name || item.products?.name || T.product}</td>
+                  <td>${item.qty} ${T.pcs}</td>
+                  <td>${money2(item.price)}</td>
+                  <td>${money2(Number(item.price) * Number(item.qty))}</td>
+                </tr>`).join('');
+    const isCancelled = order.status === 'Cancelled';
     const htmlContent = `
       <!DOCTYPE html>
-      <html lang="bn">
+      <html lang="${en ? 'en' : 'bn'}">
       <head>
         <meta charset="UTF-8">
-        <title>Invoice - ${order.order_code}</title>
+        <title>${T.inv} - ${order.order_code}</title>
         <style>
           body { font-family: 'Inter', Arial, sans-serif; padding: 30px; color: #1e293b; }
           .invoice-box { max-width: 800px; margin: auto; padding: 30px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0, 0, 0, 0.15); border-radius: 10px; }
@@ -754,51 +787,43 @@ function openProduct(p) {
                 ${settings.logo ? `<img src="${settings.logo}" alt="Logo" style="height:50px; width:50px; border-radius:50%; object-fit:cover;" />` : ''}
                 <h2 style="margin:0; color:#0f172a;">Friends Bazaar</h2>
               </div>
-              <p style="margin:8px 0 0 0; font-size:13px; color:#64748b;">${settings.owner.address} | ফোন: ${settings.owner.phone}</p>
+              <p style="margin:8px 0 0 0; font-size:13px; color:#64748b;">${settings.owner.address} | ${T.contact}: ${settings.owner.phone}</p>
             </div>
             <div style="text-align: right;">
-              <h3 style="margin:0; color:#0284c7;">INVOICE</h3>
-              <p style="margin:5px 0 0 0; font-size:14px;">কোড: <b>${order.order_code}</b></p>
-              <p style="margin:3px 0 0 0; font-size:13px; color:#64748b;">তারিখ: ${new Date(order.created_at).toLocaleDateString()}</p>
+              <h3 style="margin:0; color:#0284c7;">${T.inv}</h3>
+              <p style="margin:5px 0 0 0; font-size:14px;">${T.code}: <b>${order.order_code}</b></p>
+              <p style="margin:3px 0 0 0; font-size:13px; color:#64748b;">${T.date}: ${dateTxt}</p>
             </div>
           </div>
-          
+
           <div style="margin-bottom: 20px;">
-            <p style="margin:4px 0;"><b>গ্রাহকের নাম:</b> ${order.customer_name}</p>
-            <p style="margin:4px 0;"><b>ফোন নম্বর:</b> ${order.phone}</p>
-            <p style="margin:4px 0;"><b>ঠিকানা:</b> ${order.address}</p>
-            <p style="margin:4px 0;"><b>পেমেন্ট মাধ্যম:</b> ${order.trx_id === 'Hand Cash' ? 'হ্যান্ড ক্যাশ' : order.trx_id === 'Cash on Delivery' ? 'ক্যাশ অন ডেলিভারি' : 'বিকাশ'}</p>
-            ${order.trx_id !== 'Cash on Delivery' && order.trx_id !== 'Hand Cash' ? `<p style="margin:4px 0;"><b>বিকাশ TrxID:</b> ${order.trx_id}</p>` : ''}
-            <p style="margin:4px 0;"><b>অর্ডার স্ট্যাটাস:</b> <span style="color:${order.status==='Cancelled'?'#dc2626':'#059669'}">${order.status}</span></p>
+            <p style="margin:4px 0;"><b>${T.name}:</b> ${order.customer_name}</p>
+            <p style="margin:4px 0;"><b>${T.phone}:</b> ${order.phone}</p>
+            <p style="margin:4px 0;"><b>${T.address}:</b> ${order.address}</p>
+            <p style="margin:4px 0;"><b>${T.pay}:</b> ${payTxt}</p>
+            ${order.trx_id !== 'Cash on Delivery' && order.trx_id !== 'Hand Cash' ? `<p style="margin:4px 0;"><b>${T.trx}:</b> ${order.trx_id}</p>` : ''}
+            <p style="margin:4px 0;"><b>${T.status}:</b> <span style="color:${isCancelled ? '#dc2626' : '#059669'}">${statusTxt[order.status] || order.status}</span></p>
           </div>
 
           <table class="table">
             <thead>
               <tr>
-                <th>পণ্যের নাম</th>
-                <th>পরিমাণ</th>
-                <th>মূল্য</th>
-                <th>মোট</th>
+                <th>${T.item}</th>
+                <th>${T.qty}</th>
+                <th>${T.price}</th>
+                <th>${T.total}</th>
               </tr>
             </thead>
-            <tbody>
-              ${order.order_items.map(item => `
-                <tr>
-                  <td>${item.product_name || item.products?.name || 'পণ্য'}</td>
-                  <td>${item.qty} টি</td>
-                  <td>৳ ${Number(item.price).toLocaleString('en-BD')}</td>
-                  <td>৳ ${(item.price * item.qty).toLocaleString('en-BD')}</td>
-                </tr>
-              `).join('')}
+            <tbody>${items}
             </tbody>
           </table>
 
           <div class="total">
-            মোট প্রদেয়: ৳ ${Number(order.total).toLocaleString('en-BD')}
+            ${T.grand}: ${money2(order.total)}
           </div>
 
           <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-            আমাদের সাথে থাকার জন্য ধন্যবাদ! — Friends Bazaar
+            ${T.thanks}
           </div>
         </div>
         <script>
@@ -807,6 +832,7 @@ function openProduct(p) {
       </body>
       </html>
     `;
+    const printWindow = window.open('', '_blank');
     printWindow.document.write(htmlContent);
     printWindow.document.close();
   }
@@ -820,11 +846,12 @@ function openProduct(p) {
             Friends Bazaar
           </div>
           <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
-            <button style={btn(tab==='shop'?'#38bdf8':'#334155')} onClick={()=>goTab('shop')}>🛍️ শপ</button>
-            <button style={btn(tab==='cart'?'#38bdf8':'#334155')} onClick={()=>goTab('cart')}>🛒 কার্ট ({cart.reduce((a,b)=>a+b.qty,0)})</button>
-            <button style={btn(tab==='account'?'#38bdf8':'#334155')} onClick={()=>goTab('account')}>{session ? '👤 অ্যাকাউন্ট' : '👤 লগইন'}</button>
+            <button style={btn(tab==='shop'?'#38bdf8':'#334155')} onClick={()=>goTab('shop')}>{L.shop}</button>
+            <button style={btn(tab==='cart'?'#38bdf8':'#334155')} onClick={()=>goTab('cart')}>{L.cart} ({cart.reduce((a,b)=>a+b.qty,0)})</button>
+            <button style={btn(tab==='account'?'#38bdf8':'#334155')} onClick={()=>goTab('account')}>{session ? L.account : L.login}</button>
+            <button style={btn('#64748b')} onClick={()=>setLang(lang==='bn'?'en':'bn')}>{L.toggle}</button>
             {(isAdmin || adminLink) && (
-              <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>goTab('admin')}>⚙️ অ্যাডমিন</button>
+              <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>goTab('admin')}>{L.admin}</button>
             )}
           </div>
         </nav>
@@ -931,7 +958,10 @@ function openProduct(p) {
                       <div><b>সতর্কতা/বিশেষ দ্রষ্টব্য:</b><PointList text={selVarObj?.drawbacks || selectedProduct.drawbacks} color="#d97706" /></div>
                     </div>
 
-                    <button style={{...btn('#059669'),width:'100%',marginTop:20,padding:14,fontSize:16}} disabled={modalStock<1} onClick={()=>{addToCart(selectedProduct, selVarObj);setSelectedProduct(null);goTab('cart');}}>
+                    <button style={{...btn('#0284c7'),width:'100%',marginTop:20,padding:14,fontSize:16}} disabled={modalStock<1} onClick={()=>{addToCart(selectedProduct, selVarObj); setSelectedProduct(null); setNotice('🛒 কার্টে যোগ হয়েছে। আরও পণ্য যোগ করে একসাথে অর্ডার করতে পারেন।');}}>
+                      🛒 কার্টে যোগ করুন
+                    </button>
+                    <button style={{...btn('#059669'),width:'100%',marginTop:10,padding:14,fontSize:16}} disabled={modalStock<1} onClick={()=>{addToCart(selectedProduct, selVarObj);setSelectedProduct(null);goTab('cart');}}>
                       🛒 এখনই কিনুন (Buy Now)
                     </button>
                   </div>
