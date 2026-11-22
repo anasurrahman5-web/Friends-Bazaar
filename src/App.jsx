@@ -62,6 +62,14 @@ function PointList({ text, empty = 'তথ্য নেই।', color = '#0284c7
   );
 }
 
+// ওয়েবসাইট বাংলা থাকলে nav-এ বাংলা লেখা থাকে; ব্রাউজার অটো-ট্রান্সলেট করলে ইংরেজি হয়ে যায়
+function currentPageLang() {
+  const nav = typeof document !== 'undefined' ? document.querySelector('nav') : null;
+  const txt = nav ? nav.innerText : '';
+  if (!txt) return 'bn';
+  return /[\u0980-\u09FF]/.test(txt) ? 'bn' : 'en';
+}
+
 export default function App() {
   const [tab, setTab] = useState(() => {
     if (typeof window === 'undefined') return 'shop';
@@ -108,11 +116,7 @@ export default function App() {
 
   const isAdmin = ['admin', 'owner'].includes(adminRole);
 
-  const [lang, setLang] = useState(() => { try { return localStorage.getItem('fb_lang') || 'bn'; } catch (e) { return 'bn'; } });
-  useEffect(() => { try { localStorage.setItem('fb_lang', lang); } catch (e) {} }, [lang]);
-  const L = lang === 'en'
-    ? { shop: '🛍️ Shop', cart: '🛒 Cart', login: '👤 Login', account: '👤 Account', admin: '⚙️ Admin', toggle: 'বাংলা' }
-    : { shop: '🛍️ শপ', cart: '🛒 কার্ট', login: '👤 লগইন', account: '👤 অ্যাকাউন্ট', admin: '⚙️ অ্যাডমিন', toggle: 'English' };
+
 
   const selVarObj = selectedProduct?.product_variants?.find(v => v.id === selVariant) || null;
   const modalStock = selVarObj ? Number(selVarObj.stock) : Number(selectedProduct?.stock || 0);
@@ -419,6 +423,7 @@ export default function App() {
         address: checkout.address,
         trx_id: checkout.paymentMethod === 'bKash' ? checkout.trxId : (checkout.paymentMethod === 'Hand Cash' ? 'Hand Cash' : 'Cash on Delivery'),
         status: 'Pending',
+        payment_status: checkout.paymentMethod === 'Hand Cash' ? 'paid' : 'payable',
         total: data.total,
         order_items: (data.items || []).map(i => ({ qty: i.qty, price: i.price, products: { name: i.name } }))
       });
@@ -428,6 +433,7 @@ export default function App() {
     // অ্যাডমিন হ্যান্ড ক্যাশ বিক্রি করলে অর্ডার সাথে সাথে Completed হবে (টাকা আগেই নেওয়া হয়েছে)
     if (data?.order_id && isAdmin && checkout.paymentMethod === 'Hand Cash') {
       await updateOrderStatus(data.order_id, 'Completed');
+      await supabase.from('orders').update({ payment_status: 'paid' }).eq('id', data.order_id);
     }
     setCheckout({ ...accountDefaults(), paymentMethod:'Cash on Delivery', trxId:'' });
     await loadAll();
@@ -661,6 +667,12 @@ function openProduct(p) {
     setNotice(msg);
   }
 
+  async function updatePaymentStatus(orderId, val) {
+    const { error } = await supabase.from('orders').update({ payment_status: val }).eq('id', orderId);
+    if (error) setNotice('পেমেন্ট স্ট্যাটাস আপডেট হয়নি: ' + error.message);
+    else { await loadAll(); setNotice('পেমেন্ট স্ট্যাটাস আপডেট হয়েছে।'); }
+  }
+
   async function deleteOrder(order) {
     if (!confirm(`অর্ডার ${order.order_code} স্থায়ীভাবে ডিলিট করতে চান? এটা আর ফেরানো যাবে না।`)) return;
     const { error } = await supabase.rpc('delete_order', { p_order_id: String(order.id) });
@@ -735,26 +747,30 @@ function openProduct(p) {
   }
 
   function downloadInvoice(order) {
-    const en = lang === 'en';
+    const en = currentPageLang() === 'en';
     const T = en ? {
-      inv: 'INVOICE', code: 'Order Code', date: 'Date', name: 'Customer Name', phone: 'Phone', address: 'Address',
+      code: 'Order Code', date: 'Date', name: 'Customer Name', phone: 'Phone', address: 'Address',
       pay: 'Payment Method', cod: 'Cash on Delivery', bkash: 'bKash', hand: 'Hand Cash', trx: 'bKash TrxID',
       status: 'Order Status', item: 'Item', qty: 'Qty', price: 'Price', total: 'Total', pcs: 'pcs',
-      grand: 'Total Payable', thanks: 'Thank you for shopping with us! — Friends Bazaar', product: 'Product',
-      contact: 'Phone'
+      thanks: 'Thank you for shopping with us!', product: 'Product',
+      payable: 'Total Payable', paid: 'Total Paid', due: 'Total Due',
+      pending: 'Pending', processing: 'Processing', completed: 'Completed', cancelled: 'Cancelled'
     } : {
-      inv: 'INVOICE', code: 'কোড', date: 'তারিখ', name: 'গ্রাহকের নাম', phone: 'ফোন নম্বর', address: 'ঠিকানা',
+      code: 'কোড', date: 'তারিখ', name: 'গ্রাহকের নাম', phone: 'ফোন নম্বর', address: 'ঠিকানা',
       pay: 'পেমেন্ট মাধ্যম', cod: 'ক্যাশ অন ডেলিভারি', bkash: 'বিকাশ', hand: 'হ্যান্ড ক্যাশ', trx: 'বিকাশ TrxID',
       status: 'অর্ডার স্ট্যাটাস', item: 'পণ্যের নাম', qty: 'পরিমাণ', price: 'মূল্য', total: 'মোট', pcs: 'টি',
-      grand: 'মোট প্রদেয়', thanks: 'আমাদের সাথে থাকার জন্য ধন্যবাদ! — Friends Bazaar', product: 'পণ্য',
-      contact: 'ফোন'
+      thanks: 'আমাদের সাথে থাকার জন্য ধন্যবাদ!', product: 'পণ্য',
+      payable: 'মোট পেয়েবল', paid: 'মোট পেইড', due: 'মোট ডিউ',
+      pending: 'অপেক্ষমাণ', processing: 'প্রক্রিয়াধীন', completed: 'সম্পন্ন', cancelled: 'বাতিল'
     };
-    const statusTxt = en
-      ? { Pending: 'Pending', Processing: 'Processing', Completed: 'Completed', Cancelled: 'Cancelled' }
-      : { Pending: 'অপেক্ষমাণ', Processing: 'প্রক্রিয়াধীন', Completed: 'সম্পন্ন', Cancelled: 'বাতিল' };
+    const statusTxt = { Pending: T.pending, Processing: T.processing, Completed: T.completed, Cancelled: T.cancelled };
     const payTxt = order.trx_id === 'Hand Cash' ? T.hand : order.trx_id === 'Cash on Delivery' ? T.cod : T.bkash;
-    const dateTxt = new Date(order.created_at).toLocaleDateString(en ? 'en-GB' : 'bn-BD');
+    const paySt = order.payment_status || 'payable';
+    const totalLbl = paySt === 'paid' ? T.paid : paySt === 'due' ? T.due : T.payable;
+    const stampTxt = paySt === 'paid' ? 'PAID' : paySt === 'due' ? 'DUE' : '';
+    const stampColor = paySt === 'paid' ? '#059669' : '#dc2626';
     const money2 = n => '৳ ' + Number(n || 0).toLocaleString('en-BD');
+    const dateTxt = new Date(order.created_at).toLocaleDateString(en ? 'en-GB' : 'bn-BD');
     const items = (order.order_items || []).map(item => `
                 <tr>
                   <td>${item.product_name || item.products?.name || T.product}</td>
@@ -768,7 +784,7 @@ function openProduct(p) {
       <html lang="${en ? 'en' : 'bn'}">
       <head>
         <meta charset="UTF-8">
-        <title>${T.inv} - ${order.order_code}</title>
+        <title>INVOICE - ${order.order_code}</title>
         <style>
           body { font-family: 'Inter', Arial, sans-serif; padding: 30px; color: #1e293b; }
           .invoice-box { max-width: 800px; margin: auto; padding: 30px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0, 0, 0, 0.15); border-radius: 10px; }
@@ -776,7 +792,8 @@ function openProduct(p) {
           .table { width: 100%; border-collapse: collapse; margin-top: 20px; }
           .table th, .table td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; font-size: 14px; }
           .table th { background: #f1f5f9; }
-          .total { text-align: right; margin-top: 20px; font-size: 18px; font-weight: bold; color: #059669; }
+          .total { text-align: right; margin-top: 20px; font-size: 18px; font-weight: bold; color: ${paySt === 'paid' ? '#059669' : paySt === 'due' ? '#dc2626' : '#0f766e'}; }
+          .stamp { display: inline-block; margin-left: 10px; padding: 2px 10px; border: 2px solid ${stampColor}; color: ${stampColor}; border-radius: 6px; font-size: 14px; }
         </style>
       </head>
       <body>
@@ -787,12 +804,12 @@ function openProduct(p) {
                 ${settings.logo ? `<img src="${settings.logo}" alt="Logo" style="height:50px; width:50px; border-radius:50%; object-fit:cover;" />` : ''}
                 <h2 style="margin:0; color:#0f172a;">Friends Bazaar</h2>
               </div>
-              <p style="margin:8px 0 0 0; font-size:13px; color:#64748b;">${settings.owner.address} | ${T.contact}: ${settings.owner.phone}</p>
+              <p style="margin:8px 0 0 0; font-size:13px; color:#64748b;">${settings.owner.address} | Phone: ${settings.owner.phone}</p>
             </div>
             <div style="text-align: right;">
-              <h3 style="margin:0; color:#0284c7;">${T.inv}</h3>
-              <p style="margin:5px 0 0 0; font-size:14px;">${T.code}: <b>${order.order_code}</b></p>
-              <p style="margin:3px 0 0 0; font-size:13px; color:#64748b;">${T.date}: ${dateTxt}</p>
+              <h3 style="margin:0; color:#0284c7;">INVOICE</h3>
+              <p style="margin:5px 0 0 0; font-size:14px;">Order Code: <b>${order.order_code}</b></p>
+              <p style="margin:3px 0 0 0; font-size:13px; color:#64748b;">Date: ${new Date(order.created_at).toLocaleDateString('en-GB')}</p>
             </div>
           </div>
 
@@ -819,11 +836,11 @@ function openProduct(p) {
           </table>
 
           <div class="total">
-            ${T.grand}: ${money2(order.total)}
+            ${totalLbl}: ${money2(order.total)}${stampTxt ? `<span class="stamp">${stampTxt}</span>` : ''}
           </div>
 
           <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-            ${T.thanks}
+            ${T.thanks} — Friends Bazaar
           </div>
         </div>
         <script>
@@ -846,12 +863,12 @@ function openProduct(p) {
             Friends Bazaar
           </div>
           <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
-            <button style={btn(tab==='shop'?'#38bdf8':'#334155')} onClick={()=>goTab('shop')}>{L.shop}</button>
-            <button style={btn(tab==='cart'?'#38bdf8':'#334155')} onClick={()=>goTab('cart')}>{L.cart} ({cart.reduce((a,b)=>a+b.qty,0)})</button>
-            <button style={btn(tab==='account'?'#38bdf8':'#334155')} onClick={()=>goTab('account')}>{session ? L.account : L.login}</button>
-            <button style={btn('#64748b')} onClick={()=>setLang(lang==='bn'?'en':'bn')}>{L.toggle}</button>
+            <button style={btn(tab==='shop'?'#38bdf8':'#334155')} onClick={()=>goTab('shop')}>🛍️ শপ</button>
+            <button style={btn(tab==='cart'?'#38bdf8':'#334155')} onClick={()=>goTab('cart')}>🛒 কার্ট ({cart.reduce((a,b)=>a+b.qty,0)})</button>
+            <button style={btn(tab==='account'?'#38bdf8':'#334155')} onClick={()=>goTab('account')}>{session ? '👤 অ্যাকাউন্ট' : '👤 লগইন'}</button>
+            
             {(isAdmin || adminLink) && (
-              <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>goTab('admin')}>{L.admin}</button>
+              <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>goTab('admin')}>⚙️ অ্যাডমিন</button>
             )}
           </div>
         </nav>
@@ -1519,6 +1536,13 @@ function openProduct(p) {
                                   <option value="Completed">Completed</option>
                                   <option value="Cancelled">Cancelled (বাতিল)</option>
                                 </select>
+                                <div style={{marginTop:6}}>
+                                  <select value={o.payment_status||'payable'} onChange={e=>updatePaymentStatus(o.id, e.target.value)} style={{padding:6,borderRadius:6,fontWeight:600}}>
+                                    <option value="payable">পেয়েবল</option>
+                                    <option value="paid">পেইড</option>
+                                    <option value="due">ডিউ</option>
+                                  </select>
+                                </div>
                               </td>
                               <td style={{padding:10}}>
                                 <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
