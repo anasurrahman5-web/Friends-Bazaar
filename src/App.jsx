@@ -3,7 +3,7 @@ import { supabase, isConfigured } from './lib/supabase';
 
 const DEFAULT_SETTINGS = {
   owner: {
-    name: 'Md. Anisur Rahman',
+    name: 'Md. Anasur Rahman',
     email: 'anasurrahman5@gmail.com',
     phone: '01722023943',
     address: 'আশুগঞ্জ, ব্রাহ্মণবাড়িয়া, বাংলাদেশ',
