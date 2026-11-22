@@ -3,7 +3,7 @@ import { supabase, isConfigured } from './lib/supabase';
 
 const DEFAULT_SETTINGS = {
   owner: {
-    name: 'Md. Anasur Rahman',
+    name: 'Md. Anisur Rahman',
     email: 'anasurrahman5@gmail.com',
     phone: '01722023943',
     address: 'আশুগঞ্জ, ব্রাহ্মণবাড়িয়া, বাংলাদেশ',
@@ -64,10 +64,12 @@ function PointList({ text, empty = 'তথ্য নেই।', color = '#0284c7
 
 // ওয়েবসাইট বাংলা থাকলে nav-এ বাংলা লেখা থাকে; ব্রাউজার অটো-ট্রান্সলেট করলে ইংরেজি হয়ে যায়
 function currentPageLang() {
-  const nav = typeof document !== 'undefined' ? document.querySelector('nav') : null;
-  const txt = nav ? nav.innerText : '';
-  if (!txt) return 'bn';
-  return /[\u0980-\u09FF]/.test(txt) ? 'bn' : 'en';
+  if (typeof document === 'undefined' || !document.body) return 'bn';
+  // পুরো পেজের লেখা দেখে ঠিক করা: ব্রাউজার অটো-ট্রান্সলেট করলে ইংরেজি অক্ষর বেশি হয়
+  const txt = document.body.innerText || '';
+  const bn = (txt.match(/[\u0980-\u09FF]/g) || []).length;
+  const en = (txt.match(/[A-Za-z]/g) || []).length;
+  return en > bn ? 'en' : 'bn';
 }
 
 export default function App() {
@@ -1540,7 +1542,7 @@ function openProduct(p) {
                                   <select value={o.payment_status||'payable'} onChange={e=>updatePaymentStatus(o.id, e.target.value)} style={{padding:6,borderRadius:6,fontWeight:600}}>
                                     <option value="payable">পেয়েবল</option>
                                     <option value="paid">পেইড</option>
-                                    <option value="due">Due</option>
+                                    <option value="due">ডিউ</option>
                                   </select>
                                 </div>
                               </td>
