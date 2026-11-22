@@ -1540,7 +1540,7 @@ function openProduct(p) {
                                   <select value={o.payment_status||'payable'} onChange={e=>updatePaymentStatus(o.id, e.target.value)} style={{padding:6,borderRadius:6,fontWeight:600}}>
                                     <option value="payable">পেয়েবল</option>
                                     <option value="paid">পেইড</option>
-                                    <option value="due">ডিউ</option>
+                                    <option value="due">Due</option>
                                   </select>
                                 </div>
                               </td>
