@@ -3,7 +3,7 @@ import { supabase, isConfigured } from './lib/supabase';
 
 const DEFAULT_SETTINGS = {
   owner: {
-    name: 'Md. Anisur Rahman',
+    name: 'Md. Anasur Rahman',
     email: 'anasurrahman5@gmail.com',
     phone: '01722023943',
     address: 'আশুগঞ্জ, ব্রাহ্মণবাড়িয়া, বাংলাদেশ',
@@ -319,7 +319,8 @@ export default function App() {
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0), [cart]);
   
-  const validOrders = useMemo(() => orders.filter(o => o.status !== 'Cancelled'), [orders]);
+  // টাকা ও প্রফিটের হিসাবে শুধু পেইড ও বাতিল নয় এমন অর্ডার যোগ হবে। অর্ডার সংখ্যা (Total Orders) সব অর্ডার ধরে হবে।
+  const validOrders = useMemo(() => orders.filter(o => o.status !== 'Cancelled' && o.payment_status === 'paid'), [orders]);
   const revenue = validOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
   const totalProfit = validOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0);
 
