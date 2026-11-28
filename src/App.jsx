@@ -3,7 +3,7 @@ import { supabase, isConfigured } from './lib/supabase';
 
 const DEFAULT_SETTINGS = {
   owner: {
-    name: 'Md. Anasur Rahman',
+    name: 'Md. Anisur Rahman',
     email: 'anasurrahman5@gmail.com',
     phone: '01722023943',
     address: 'আশুগঞ্জ, ব্রাহ্মণবাড়িয়া, বাংলাদেশ',
@@ -76,7 +76,7 @@ export default function App() {
   const [tab, setTab] = useState(() => {
     if (typeof window === 'undefined') return 'shop';
     const h = window.location.hash.replace('#', '');
-    return ['cart', 'admin', 'account'].includes(h) ? h : 'shop';
+    return ['cart', 'admin', 'account', 'accounts'].includes(h) ? h : 'shop';
   });
   // অ্যাডমিন বাটন শুধু গোপন লিংক (আপনার-সাইট/#admin) দিয়ে ঢুকলে বা লগইন থাকলে দেখা যাবে
   const [adminLink] = useState(() => typeof window !== 'undefined' && window.location.hash === '#admin');
@@ -108,6 +108,8 @@ export default function App() {
   const [editOrig, setEditOrig] = useState(null);
   const [priceEdit, setPriceEdit] = useState(null);
   const [orderEdit, setOrderEdit] = useState(null);
+  const [entries, setEntries] = useState([]);
+  const [entryForm, setEntryForm] = useState({ type: 'purchase', product_id: '', partner: 'owner', amount: '', qty: '', note: '', entry_date: new Date().toISOString().slice(0, 10) });
   const [dragIdx, setDragIdx] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
@@ -142,7 +144,7 @@ export default function App() {
   useEffect(() => {
     const read = () => {
       const h = window.location.hash.replace('#', '');
-      return ['cart', 'admin', 'account'].includes(h) ? h : 'shop';
+      return ['cart', 'admin', 'account', 'accounts'].includes(h) ? h : 'shop';
     };
     window.history.replaceState({ tab: read() }, '');
     const onPop = () => { setTab(read()); setSelectedProduct(null); setIsZoomed(false); };
@@ -857,6 +859,226 @@ function openProduct(p) {
     printWindow.document.close();
   }
 
+  async function loadEntries() {
+    const { data, error } = await supabase.from('business_entries').select('*')
+      .order('entry_date', { ascending: false }).order('created_at', { ascending: false });
+    if (error) setNotice('হিসাব লোড হয়নি: ' + error.message);
+    else setEntries(data || []);
+  }
+  useEffect(() => { if (isAdmin && tab === 'accounts') loadEntries(); }, [isAdmin, tab]);
+
+  async function addEntry(e) {
+    e.preventDefault();
+    const f = entryForm;
+    const amount = Number(f.amount);
+    if (!(amount > 0)) return setNotice('সঠিক টাকার পরিমাণ লিখুন।');
+    if (f.type === 'purchase' && !f.product_id) return setNotice('কোন পণ্যের খরচ তা বাছুন।');
+    if (f.type === 'investment' && !f.partner) return setNotice('কে বিনিয়োগ করেছে তা বাছুন।');
+    setBusy(true);
+    const row = {
+      entry_type: f.type,
+      product_id: f.type === 'purchase' ? Number(f.product_id) : null,
+      partner: f.type === 'investment' ? f.partner : null,
+      amount,
+      qty: f.type === 'purchase' && f.qty ? Number(f.qty) : null,
+      note: f.note.trim(),
+      entry_date: f.entry_date
+    };
+    const { error } = await supabase.from('business_entries').insert(row);
+    setBusy(false);
+    if (error) return setNotice('যোগ হয়নি: ' + error.message);
+    setEntryForm({ ...entryForm, amount: '', qty: '', note: '' });
+    await loadEntries();
+    setNotice('হিসাবে যোগ হয়েছে।');
+  }
+
+  async function deleteEntry(id) {
+    if (!confirm('এই হিসাবটি মুছে ফেলতে চান?')) return;
+    const { error } = await supabase.from('business_entries').delete().eq('id', id);
+    if (error) setNotice('মোছা যায়নি: ' + error.message);
+    else await loadEntries();
+  }
+
+  function renderAccounts() {
+    if (!isAdmin) return null;
+    const paidOrders = orders.filter(o => o.status !== 'Cancelled' && o.payment_status === 'paid');
+    const dueOrders = orders.filter(o => o.status !== 'Cancelled' && o.payment_status !== 'paid');
+    const paidRevenue = paidOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+    const pendingRevenue = dueOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+
+    const byProduct = {};
+    const ensure = k => (byProduct[k] = byProduct[k] || { sold: 0, cogs: 0, pieces: 0, spent: 0 });
+    paidOrders.forEach(o => (o.order_items || []).forEach(oi => {
+      const r = ensure(String(oi.product_id));
+      const q = Number(oi.qty || 0);
+      r.sold += Number(oi.price ?? oi.unit_price ?? 0) * q;
+      r.cogs += Number(oi.unit_cost || 0) * q;
+      r.pieces += q;
+    }));
+    const sumEntries = (type, partner) => entries
+      .filter(e => e.entry_type === type && (partner === undefined || e.partner === partner))
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
+    entries.filter(e => e.entry_type === 'purchase' && e.product_id)
+      .forEach(e => { ensure(String(e.product_id)).spent += Number(e.amount || 0); });
+
+    const purchasesTotal = sumEntries('purchase');
+    const expensesTotal = sumEntries('expense');
+    const cogsTotal = Object.values(byProduct).reduce((s, r) => s + r.cogs, 0);
+    const grossProfit = paidRevenue - cogsTotal;
+    const netProfit = grossProfit - expensesTotal;
+    const invOwner = sumEntries('investment', 'owner');
+    const invPartner = sumEntries('investment', 'partner');
+    const invTotal = invOwner + invPartner;
+    const half = invTotal / 2;
+    const diff = invOwner - half;
+    const cash = invTotal + paidRevenue - purchasesTotal - expensesTotal;
+
+    const partnerLine = Math.abs(diff) < 0.5
+      ? 'দুজনের বিনিয়োগ সমান আছে।'
+      : diff > 0
+        ? `পার্টনার আপনাকে দিবে ৳ ${Math.round(diff).toLocaleString('en-BD')}`
+        : `আপনি পার্টনারকে দিবেন ৳ ${Math.round(-diff).toLocaleString('en-BD')}`;
+
+    const card = (label, value, color) => (
+      <div style={{background:'#fff',border:'1px solid #e2e8f0',borderLeft:`5px solid ${color}`,borderRadius:12,padding:15}}>
+        <div style={{color:'#64748b',fontWeight:600,fontSize:13}}>{label}</div>
+        <div style={{fontSize:20,fontWeight:800,color,marginTop:4}}>{value}</div>
+      </div>
+    );
+
+    return (
+      <div style={{background:'#f8fafc',padding:20,borderRadius:20}}>
+        <h2 style={{marginTop:0}}>📊 ব্যবসার হিসাব ও অ্যানালাইসিস</h2>
+        <p style={{color:'#64748b',marginTop:-8}}>শুধু পেইড অর্ডারের টাকা হিসাবে যোগ হয়। অর্ডার সংখ্যা সব অর্ডার ধরে হয়।</p>
+
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:15,marginBottom:20}}>
+          {card('মোট অর্ডার', `${orders.length} টি`, '#0f172a')}
+          {card('পেইড বিক্রি', money(paidRevenue), '#059669')}
+          {card('মোট প্রফিট (গ্রস)', money(grossProfit), '#0284c7')}
+          {card('নেট প্রফিট (অন্য খরচ বাদে)', money(netProfit), '#7c3aed')}
+          {card('পেমেন্ট বাকি (ডিউ/পেয়েবল)', money(pendingRevenue), '#d97706')}
+          {card('ব্যবসার হাতে টাকা (আনুমানিক)', money(cash), '#0f766e')}
+        </div>
+
+        <div style={panel}>
+          <h3 style={{marginTop:0}}>🥭 প্রতিটি পণ্যের হিসাব</h3>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
+              <thead>
+                <tr style={{background:'#f1f5f9',textAlign:'left'}}>
+                  <th style={{padding:10}}>পণ্য</th>
+                  <th style={{padding:10}}>মোট খরচ (কেনা)</th>
+                  <th style={{padding:10}}>বিক্রি পিস</th>
+                  <th style={{padding:10}}>বিক্রি (টাকা)</th>
+                  <th style={{padding:10}}>প্রফিট</th>
+                  <th style={{padding:10}}>খরচ বাদে লাভ/লোকসান</th>
+                  <th style={{padding:10}}>বর্তমান স্টক</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map(p => {
+                  const r = byProduct[String(p.id)] || { sold: 0, cogs: 0, pieces: 0, spent: 0 };
+                  const profit = r.sold - r.cogs;
+                  const net = r.sold - r.spent;
+                  return (
+                    <tr key={p.id} style={{borderBottom:'1px solid #e2e8f0'}}>
+                      <td style={{padding:10,fontWeight:700}}>{p.name}</td>
+                      <td style={{padding:10,color:'#dc2626'}}>{money(r.spent)}</td>
+                      <td style={{padding:10}}>{r.pieces}</td>
+                      <td style={{padding:10,color:'#059669'}}>{money(r.sold)}</td>
+                      <td style={{padding:10,color:'#0284c7',fontWeight:700}}>{money(profit)}</td>
+                      <td style={{padding:10,color:net>=0?'#059669':'#dc2626',fontWeight:700}}>{money(net)}</td>
+                      <td style={{padding:10}}>{p.stock}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p style={{fontSize:13,color:'#64748b'}}>নতুন পণ্য যোগ করলে এই তালিকায় নিজে থেকে যোগ হবে। সাইজ (ভ্যারিয়েন্ট) আলাদা না দেখিয়ে পণ্যের নামে একসাথে হিসাব হবে।</p>
+        </div>
+
+        <div style={panel}>
+          <h3 style={{marginTop:0}}>🤝 পার্টনার হিসাব (সমান বিনিয়োগ)</h3>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))',gap:12,marginBottom:15}}>
+            {card('আপনি বিনিয়োগ করেছেন', money(invOwner), '#0284c7')}
+            {card('পার্টনার বিনিয়োগ করেছে', money(invPartner), '#7c3aed')}
+            {card('প্রতিজনের সমান অংশ', money(half), '#0f766e')}
+          </div>
+          <div style={{padding:15,borderRadius:12,background:'#fef9c3',border:'1px solid #facc15',fontWeight:700,fontSize:16}}>
+            হিসাব: {partnerLine}
+          </div>
+          <p style={{fontSize:13,color:'#64748b'}}>কে কত বিনিয়োগ করেছে তার মোট থেকে দুজনের সমান অংশ বের করা হয়। যে বেশি দিয়েছে, অন্যজন তার বেশি অংশটুকু দিবে। ব্যবসার টাকা ব্যবসার হাতেই থাকবে।</p>
+        </div>
+
+        <div style={panel}>
+          <h3 style={{marginTop:0}}>➕ নতুন হিসাব যোগ করুন</h3>
+          <form onSubmit={addEntry} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))',gap:12}}>
+            <select style={inputStyle} value={entryForm.type} onChange={e=>setEntryForm({...entryForm, type:e.target.value})}>
+              <option value="purchase">পণ্য কেনার খরচ</option>
+              <option value="investment">বিনিয়োগ (টাকা জমা)</option>
+              <option value="expense">অন্যান্য খরচ (ডেলিভারি, প্যাকেট ইত্যাদি)</option>
+            </select>
+            {entryForm.type === 'purchase' && (
+              <select style={inputStyle} required value={entryForm.product_id} onChange={e=>setEntryForm({...entryForm, product_id:e.target.value})}>
+                <option value="">পণ্য বাছুন</option>
+                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
+            {entryForm.type === 'investment' && (
+              <select style={inputStyle} value={entryForm.partner} onChange={e=>setEntryForm({...entryForm, partner:e.target.value})}>
+                <option value="owner">আপনি</option>
+                <option value="partner">পার্টনার</option>
+              </select>
+            )}
+            <input style={inputStyle} required type="number" min="0" step="0.01" placeholder="টাকার পরিমাণ" value={entryForm.amount} onChange={e=>setEntryForm({...entryForm, amount:e.target.value})}/>
+            {entryForm.type === 'purchase' && (
+              <input style={inputStyle} type="number" min="0" step="0.01" placeholder="কত পিস/কেজি কেনা হলো (ঐচ্ছিক)" value={entryForm.qty} onChange={e=>setEntryForm({...entryForm, qty:e.target.value})}/>
+            )}
+            <input style={inputStyle} placeholder="কী বাবদ (নোট)" value={entryForm.note} onChange={e=>setEntryForm({...entryForm, note:e.target.value})}/>
+            <input style={inputStyle} type="date" value={entryForm.entry_date} onChange={e=>setEntryForm({...entryForm, entry_date:e.target.value})}/>
+            <button style={btn('#059669')} disabled={busy}>হিসাবে যোগ করুন</button>
+          </form>
+        </div>
+
+        <div style={panel}>
+          <h3 style={{marginTop:0}}>📋 সব হিসাবের তালিকা</h3>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
+              <thead>
+                <tr style={{background:'#f1f5f9',textAlign:'left'}}>
+                  <th style={{padding:10}}>তারিখ</th>
+                  <th style={{padding:10}}>ধরন</th>
+                  <th style={{padding:10}}>বিবরণ</th>
+                  <th style={{padding:10}}>টাকা</th>
+                  <th style={{padding:10}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map(e => {
+                  const prod = products.find(p => String(p.id) === String(e.product_id));
+                  const typeTxt = e.entry_type === 'purchase' ? 'পণ্য কেনা' : e.entry_type === 'investment' ? 'বিনিয়োগ' : 'অন্যান্য খরচ';
+                  const who = e.entry_type === 'investment' ? (e.partner === 'owner' ? 'আপনি' : 'পার্টনার') : '';
+                  const what = e.entry_type === 'purchase' ? (prod?.name || 'পণ্য') : '';
+                  return (
+                    <tr key={e.id} style={{borderBottom:'1px solid #e2e8f0'}}>
+                      <td style={{padding:10}}>{e.entry_date}</td>
+                      <td style={{padding:10}}>{typeTxt}{who ? ` (${who})` : ''}</td>
+                      <td style={{padding:10}}>{[what, e.qty ? `${e.qty} টি`: '', e.note].filter(Boolean).join(' — ')}</td>
+                      <td style={{padding:10,fontWeight:700}}>{money(e.amount)}</td>
+                      <td style={{padding:10}}><button onClick={()=>deleteEntry(e.id)} style={{...btn('#dc2626'),padding:'4px 10px'}}>ডিলিট</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {entries.length === 0 && <p style={{color:'#64748b'}}>এখনো কোনো হিসাব যোগ হয়নি।</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{fontFamily:"Inter,Arial,sans-serif",background:'#f8fafc',minHeight:'100vh',color:'#1e293b',display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
       <div>
@@ -870,6 +1092,9 @@ function openProduct(p) {
             <button style={btn(tab==='cart'?'#38bdf8':'#334155')} onClick={()=>goTab('cart')}>🛒 কার্ট ({cart.reduce((a,b)=>a+b.qty,0)})</button>
             <button style={btn(tab==='account'?'#38bdf8':'#334155')} onClick={()=>goTab('account')}>{session ? '👤 অ্যাকাউন্ট' : '👤 লগইন'}</button>
             
+            {isAdmin && (
+              <button style={btn(tab==='accounts'?'#38bdf8':'#334155')} onClick={()=>goTab('accounts')}>📊 হিসাব</button>
+            )}
             {(isAdmin || adminLink) && (
               <button style={btn(tab==='admin'?'#e11d48':'#334155')} onClick={()=>goTab('admin')}>⚙️ অ্যাডমিন</button>
             )}
@@ -1178,6 +1403,8 @@ function openProduct(p) {
               )}
             </div>
           )}
+
+          {tab==='accounts' && isAdmin && renderAccounts()}
 
           {tab==='admin' && (
             <div>
